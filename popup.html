@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self';">
+    <title>CredifyFBS Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Hello World</h1>
+            <p class="subtitle">CredifyFBS Demo Extension</p>
+        </header>
+
+        <main>
+            <section class="status-section">
+                <div class="status-card">
+                    <h2>Extension Status</h2>
+                    <p class="status-message" id="statusMessage">Initializing...</p>
+                    <div class="status-indicator" id="statusIndicator"></div>
+                </div>
+            </section>
+
+            <section class="info-section">
+                <h3>Current Page Info</h3>
+                <div class="info-box">
+                    <p><strong>Title:</strong> <span id="pageTitle">Loading...</span></p>
+                    <p><strong>URL:</strong> <span id="pageUrl">Loading...</span></p>
+                    <p><strong>Time:</strong> <span id="currentTime">--:--:--</span></p>
+                </div>
+            </section>
+
+            <section class="action-section">
+                <button id="refreshButton" class="btn btn-primary" aria-label="Refresh page information">
+                    Refresh Info
+                </button>
+                <button id="helloButton" class="btn btn-secondary" aria-label="Display hello world message">
+                    Say Hello
+                </button>
+            </section>
+
+            <section class="message-section" id="messageSection" style="display: none;">
+                <div class="message-box">
+                    <p id="helloMessage" class="hello-text">Hello World! 🎉</p>
+                    <p class="message-subtext" id="messageTime"></p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p class="footer-text">CredifyFBS v1.0.0 • Manifest V3 Compliant</p>
+        </footer>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
