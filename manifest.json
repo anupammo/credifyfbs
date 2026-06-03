@@ -3,7 +3,7 @@
   "name": "Credify · Form Builder",
   "version": "1.0.0",
   "description": "Behavioral health intake form builder with weights, scoring, and skip logic — opens in a new tab.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "windows"],
   "background": {
     "service_worker": "background.js"
   },

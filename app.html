@@ -9,24 +9,36 @@
 /* ──────────────────────────────────────────────────────────────────────────
    Credify Extension · localStorage bridge  (injected — original app untouched)
    ----------------------------------------------------------------------------
-   A Chrome MV3 *sandboxed* page (which is what lets the app's 157 inline
-   event handlers keep working) runs on an opaque origin, where the real
-   localStorage throws. This shim provides a synchronous, in-memory
-   localStorage that:
-     • is SEEDED synchronously at load from the URL hash (the new-tab host
-       puts the saved data there before the iframe loads), and
-     • FORWARDS every write to the host via postMessage, which persists it to
-       chrome.storage.local so data survives across new tabs / restarts.
-   The app calls localStorage exactly as before; it has no idea this exists.
+   A Chrome MV3 *sandboxed* page runs on an opaque (null) origin, where the
+   real localStorage throws. This shim provides an in-memory localStorage and
+   coordinates a two-step seed handshake with the host (newtab.js):
+
+     1. Shim signals readiness:  postMessage({ __credifyReady: true })
+     2. Host responds with data:  postMessage({ __credifySeed: <object> })
+     3. Shim populates store and fires 'credify:seeded' so the app init
+        block (deferred at the bottom of <body>) can run with real data.
+
+   This replaces the old URL-hash approach, which Chrome's security policy
+   blocks for sandboxed (null-origin) frames when the hash URL is long.
    ────────────────────────────────────────────────────────────────────────── */
 (function () {
   var store = {};
 
-  // Seed synchronously from the hash the host put on the iframe URL.
-  try {
-    var h = (location.hash || '').slice(1);
-    if (h) { store = JSON.parse(decodeURIComponent(escape(atob(h)))) || {}; }
-  } catch (e) { store = {}; }
+  // Tells the init block at the bottom of <body> to wait for the seed before
+  // running. Cleared by the message handler below once data arrives.
+  window.__credifySeedPending = true;
+
+  // Step 1 — listen for the seed coming down from the host.
+  window.addEventListener('message', function seedHandler(e) {
+    if (!e.data || typeof e.data.__credifySeed !== 'object') return;
+    window.removeEventListener('message', seedHandler);
+    try { store = e.data.__credifySeed || {}; } catch (ex) { store = {}; }
+    window.__credifySeedPending = false;
+    window.dispatchEvent(new CustomEvent('credify:seeded'));
+  });
+
+  // Step 2 — tell the host we are ready to receive the seed.
+  try { parent.postMessage({ __credifyReady: true }, '*'); } catch (e) {}
 
   // Push the whole store up to the host (debounced) so it can persist it.
   var t = null;
@@ -6502,6 +6514,9 @@ function openFormsManager(){
   setTimeout(()=>{ document.getElementById('forms-search-input')?.focus(); }, 50);
 }
 
+// Wrap the entire startup sequence in a function so it can be deferred
+// until the localStorage seed has been delivered via postMessage.
+function _credifyInit() {
 const stored=loadBlocks();
 BLOCKS = stored || [];
 renderFieldsTab();
@@ -6638,6 +6653,15 @@ if(toOpen){
 }
 applyRoleUI();
 scheduleReflow();
+} // end _credifyInit
+
+// Run immediately if the shim already has data (e.g. standalone / test),
+// otherwise wait for the host to deliver the seed via 'credify:seeded'.
+if (window.__credifySeedPending) {
+  window.addEventListener('credify:seeded', function () { _credifyInit(); }, { once: true });
+} else {
+  _credifyInit();
+}
 </script>
 </body>
 </html>
