@@ -1,38 +1,26 @@
 {
   "manifest_version": 3,
-  "name": "CredifyFBS Demo",
+  "name": "Credify · Form Builder",
   "version": "1.0.0",
-  "description": "Modular Credify form builder Chrome extension ready for future backend integration.",
-  "permissions": [
-    "activeTab",
-    "storage"
-  ],
-  "action": {
-    "default_title": "Open Credify Form Builder",
-    "default_icons": {
-      "16": "assets/icon16.png",
-      "48": "assets/icon48.png",
-      "128": "assets/icon128.png"
-    }
+  "description": "Behavioral health intake form builder with weights, scoring, and skip logic — opens in a new tab.",
+  "permissions": ["storage"],
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
   },
-  "background": {
-    "service_worker": "src/background.js"
+  "sandbox": {
+    "pages": ["app.html"]
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://*/*",
-        "http://*/*"
-      ],
-      "js": [
-        "src/content.js"
-      ],
-      "run_at": "document_idle"
-    }
-  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals allow-popups-to-escape-sandbox allow-downloads; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'"
+  },
   "icons": {
-    "16": "assets/icon16.png",
-    "48": "assets/icon48.png",
-    "128": "assets/icon128.png"
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_icon": "icons/icon-128.png",
+    "default_title": "Credify Form Builder"
   }
 }

@@ -32,8 +32,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.action.onClicked.addListener(async () => {
   const url = chrome.runtime.getURL('src/popup/index.html');
-  const width = typeof screen !== 'undefined' && screen.availWidth ? Math.floor(screen.availWidth * 0.9) : 1200;
-  const height = typeof screen !== 'undefined' && screen.availHeight ? Math.floor(screen.availHeight * 0.9) : 800;
+  // Preferred popup size (keeps a compact separate window instead of near-fullscreen)
+  const preferredWidth = 420;
+  const preferredHeight = 720;
+  const maxWidth = typeof screen !== 'undefined' && screen.availWidth ? Math.floor(screen.availWidth * 0.6) : preferredWidth;
+  const maxHeight = typeof screen !== 'undefined' && screen.availHeight ? Math.floor(screen.availHeight * 0.8) : preferredHeight;
+  const width = Math.min(preferredWidth, maxWidth);
+  const height = Math.min(preferredHeight, maxHeight);
   const left = typeof screen !== 'undefined' && screen.availWidth ? Math.floor((screen.availWidth - width) / 2) : undefined;
   const top = typeof screen !== 'undefined' && screen.availHeight ? Math.floor((screen.availHeight - height) / 2) : undefined;
 

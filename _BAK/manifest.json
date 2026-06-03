@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "CredifyFBS Demo",
+  "version": "1.0.0",
+  "description": "Modular Credify form builder Chrome extension ready for future backend integration.",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "action": {
+    "default_title": "Open Credify Form Builder",
+    "default_icons": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  }
+}
