@@ -1,0 +1,47 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: credify
+      POSTGRES_USER: credify
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U credify']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../backend
+      target: builder
+    command: npm run dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://credify:dev_password@postgres:5432/credify
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_in_prod}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_in_prod}
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 30d
+      AES_MASTER_KEY: ${AES_MASTER_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      HMAC_SECRET: ${HMAC_SECRET:-0000000000000000000000000000000000000000000000000000000000000000}
+      NODE_ENV: development
+    ports:
+      - '3000:3000'
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

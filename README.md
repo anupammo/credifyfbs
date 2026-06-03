@@ -3,7 +3,7 @@
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
 [![Version](https://img.shields.io/badge/Extension-v1.0.0-green)](./manifest.json)
-[![Backend](https://img.shields.io/badge/Backend-Next.js_14-black)](./backend)
+[![Backend](https://img.shields.io/badge/Backend-Next.js_16-black)](./backend)
 [![DB](https://img.shields.io/badge/Database-PostgreSQL_16-blue)](./backend/prisma)
 [![Deploy](https://img.shields.io/badge/Deploy-GCP_Cloud_Run-orange)](./infra)
 [![License](https://img.shields.io/badge/License-Internal--Use--Only-red)](#)
@@ -180,58 +180,62 @@ app.html  (sandboxed) ── localStorage shim
 ```
 credifyfbs/
 │
-├── extension/                   # Chrome Extension (v1.1 — API-backed)
-│   ├── manifest.json            # MV3, adds host_permissions for API
-│   ├── background.js            # Service worker + ApiClient + TokenRefresh
-│   ├── newtab.html              # Unchanged host shell
-│   ├── newtab.js                # Hybrid: local fallback + API sync
-│   ├── app.html                 # Builder UI (API-aware storage bridge)
-│   └── icons/
+├── manifest.json                # v1.0 MV3 extension root (current branch)
+├── background.js                # Service worker — opens app window
+├── newtab.html / newtab.js      # Host page + storage bridge
+├── app.html                     # Full form builder UI (~7 000 lines)
+├── icons/                       # Extension toolbar icons
 │
-├── backend/                     # Next.js application
-│   ├── app/
-│   │   └── api/
-│   │       ├── auth/
-│   │       │   ├── login/route.ts
-│   │       │   ├── logout/route.ts
-│   │       │   ├── refresh/route.ts
-│   │       │   └── me/route.ts
-│   │       ├── forms/
-│   │       │   ├── route.ts          # GET list, POST create
-│   │       │   └── [id]/
-│   │       │       ├── route.ts      # GET, PUT, DELETE
-│   │       │       └── share/route.ts
-│   │       ├── users/
-│   │       │   ├── route.ts          # GET list (admin), POST invite
-│   │       │   └── [id]/route.ts     # PUT role, DELETE
-│   │       ├── groups/
-│   │       │   ├── route.ts
-│   │       │   └── [id]/route.ts
-│   │       └── blocks/
-│   │           ├── route.ts
-│   │           └── [id]/route.ts
-│   ├── lib/
-│   │   ├── db.ts                # Prisma client singleton
+├── backend/                     # ✅ v1.1 Next.js 16 API backend (scaffolded)
+│   ├── app/api/
 │   │   ├── auth/
-│   │   │   ├── jwt.ts           # sign / verify / refresh
-│   │   │   └── password.ts      # bcrypt helpers
+│   │   │   ├── login/route.ts   # POST — email + password → JWT tokens
+│   │   │   ├── logout/route.ts  # POST — revoke refresh token
+│   │   │   ├── refresh/route.ts # POST — rotate access + refresh tokens
+│   │   │   └── me/route.ts      # GET  — current user profile
+│   │   ├── forms/
+│   │   │   ├── route.ts         # GET list (paginated), POST create
+│   │   │   └── [id]/
+│   │   │       ├── route.ts     # GET, PUT, DELETE (soft)
+│   │   │       └── share/route.ts # GET/POST/DELETE shares
+│   │   ├── users/
+│   │   │   ├── route.ts         # GET list (admin), POST invite
+│   │   │   └── [id]/route.ts    # PUT role/name, DELETE (soft)
+│   │   ├── groups/
+│   │   │   ├── route.ts         # GET, POST
+│   │   │   └── [id]/route.ts    # PUT, DELETE
+│   │   └── blocks/
+│   │       ├── route.ts         # GET, POST
+│   │       └── [id]/route.ts    # PUT, DELETE
+│   ├── lib/
+│   │   ├── db.ts                # Prisma singleton (dev hot-reload safe)
+│   │   ├── audit.ts             # auditLog() helper
+│   │   ├── rateLimit.ts         # Sliding-window rate limiter
+│   │   ├── auth/
+│   │   │   ├── jwt.ts           # signAccessToken / rotateRefreshToken
+│   │   │   └── password.ts      # bcrypt hash / verify (cost 12)
 │   │   ├── crypto/
-│   │   │   ├── aes.ts           # AES-256-GCM encrypt/decrypt
-│   │   │   └── hmac.ts          # request payload signing
+│   │   │   ├── aes.ts           # AES-256-GCM encrypt / decrypt
+│   │   │   └── hmac.ts          # HMAC-SHA256 payload signing
 │   │   └── middleware/
-│   │       ├── withAuth.ts      # JWT verification middleware
-│   │       └── withRole.ts      # RBAC guard factory
+│   │       ├── withAuth.ts      # JWT Bearer verification
+│   │       └── withRole.ts      # RBAC guard (VIEWER / EDITOR / ADMIN)
 │   ├── prisma/
-│   │   ├── schema.prisma        # DB schema
-│   │   └── migrations/
-│   ├── Dockerfile
+│   │   ├── schema.prisma        # Full DB schema (all models + enums)
+│   │   ├── seed.ts              # Seeds org + admin + editor users
+│   │   ├── migrations/          # ✅ 20260603215510_init applied
+│   │   └── tsconfig.seed.json   # ts-node config for seed script
+│   ├── .env                     # ✅ Generated secrets (gitignored)
+│   ├── .env.example             # Template for new devs
+│   ├── .gitignore
+│   ├── Dockerfile               # Multi-stage: deps → build → runner
 │   ├── .dockerignore
 │   ├── next.config.ts
 │   ├── tsconfig.json
-│   └── package.json
+│   └── package.json             # Next.js 16, Prisma 5, bcryptjs, zod
 │
 ├── docker/
-│   ├── docker-compose.dev.yml   # Local dev: Next.js + PostgreSQL
+│   ├── docker-compose.dev.yml   # Postgres 16 + backend (Docker optional)
 │   └── docker-compose.prod.yml  # Production-parity smoke-test
 │
 ├── infra/                       # GCP provisioning (optional Terraform)
@@ -241,7 +245,7 @@ credifyfbs/
 │
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml           # CI/CD: build → push → deploy
+│       └── deploy.yml           # CI/CD: test → build → push → Cloud Run
 │
 └── README.md                    # ← you are here
 ```
@@ -678,11 +682,20 @@ GitHub Actions: deploy.yml
 
 ## 12. Development Quickstart
 
+### Current local stack (no Docker required)
+
+| Component | Version | Status |
+|-----------|---------|--------|
+| Node.js | 22.x | Required |
+| PostgreSQL | 16.14 (EDB) | Running — `localhost:5432` |
+| Next.js API | 16.2.7 | Running — `http://localhost:3000` |
+| Prisma | 5.22.0 | Migrated + seeded |
+
 ### Prerequisites
 
-- Node.js 20+
-- Docker + Docker Compose
-- `gcloud` CLI (for deployment only)
+- **Node.js 20+** — [nodejs.org](https://nodejs.org)
+- **PostgreSQL 16** — already installed via EDB at `C:\Program Files\PostgreSQL\16`
+- `gcloud` CLI — for GCP deployment only
 
 ### 1. Clone and install
 
@@ -692,80 +705,171 @@ cd credifyfbs/backend
 npm install
 ```
 
-### 2. Start local services
+### 2. PostgreSQL setup (first time only)
+
+PostgreSQL 16 is installed at `C:\Program Files\PostgreSQL\16\bin\`. The service starts automatically with Windows.
+
+```powershell
+# Verify the service is running
+Get-Service postgresql* | Select-Object Name, Status
+
+# If stopped, start it
+Start-Service postgresql*
+
+# Create the credify user and database (one-time)
+$env:PGPASSWORD = "postgres"
+$psql = "C:\Program Files\PostgreSQL\16\bin\psql.exe"
+& $psql -U postgres -h 127.0.0.1 -c "CREATE USER credify WITH PASSWORD 'dev_password' CREATEDB;"
+& $psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE credify OWNER credify ENCODING 'UTF8';"
+& $psql -U postgres -h 127.0.0.1 -d credify -c "GRANT ALL ON SCHEMA public TO credify;"
+```
+
+### 3. Configure environment
+
+```bash
+cd backend
+# .env already exists with generated secrets.
+# For a fresh machine, generate new secrets:
+node -e "
+const c=require('crypto'),f=require('fs');
+const a=c.randomBytes(64).toString('base64');
+const r=c.randomBytes(64).toString('base64');
+const k=c.randomBytes(32).toString('hex');
+const h=c.randomBytes(32).toString('hex');
+f.writeFileSync('.env',[
+  'DATABASE_URL=postgresql://credify:dev_password@localhost:5432/credify',
+  'JWT_ACCESS_SECRET='+a,
+  'JWT_REFRESH_SECRET='+r,
+  'JWT_ACCESS_EXPIRY=15m',
+  'JWT_REFRESH_EXPIRY=30d',
+  'AES_MASTER_KEY='+k,
+  'HMAC_SECRET='+h,
+  'NEXT_PUBLIC_API_BASE_URL=http://localhost:3000',
+  'NODE_ENV=development'
+].join('\n')+'\n');
+"
+```
+
+> ⚠️ **Note:** `.env` values must be unquoted (no surrounding `"` marks). Prisma reads them raw.
+
+### 4. Run migrations and seed
+
+```bash
+cd backend
+npx prisma migrate dev        # creates all tables
+npm run db:seed               # seeds org + admin + editor users
+```
+
+Seeded credentials:
+
+| Email | Password | Role |
+|-------|----------|------|
+| `admin@credify.internal` | `admin1234!` | ADMIN |
+| `editor@credify.internal` | `editor1234!` | EDITOR |
+
+### 5. Start the backend dev server
+
+```powershell
+cd backend
+npx next dev
+# → http://localhost:3000
+```
+
+### 6. Verify the API
+
+```powershell
+# Login and get tokens
+Invoke-RestMethod -Uri "http://localhost:3000/api/auth/login" `
+  -Method POST -ContentType "application/json" `
+  -Body '{"email":"admin@credify.internal","password":"admin1234!"}'
+```
+
+### 7. Load the v1.0 extension (current branch)
+
+1. Open `chrome://extensions/`
+2. Enable **Developer mode**
+3. Click **Load unpacked** → select the repo root (`credifyfbs/`)
+4. Click the Credify icon — the form builder opens in a new window
+
+### Optional: Docker Compose
+
+If Docker Desktop is installed, you can run the full stack instead:
 
 ```bash
 cd docker
 docker compose -f docker-compose.dev.yml up -d
+cd ../backend && npx prisma migrate dev && npm run db:seed && npx next dev
 ```
-
-### 3. Set up the database
-
-```bash
-cd backend
-cp .env.example .env          # fill in values
-npx prisma migrate dev        # run migrations
-npx prisma db seed            # seed org + admin user
-```
-
-### 4. Run the backend
-
-```bash
-npm run dev                   # Next.js dev server on :3000
-```
-
-### 5. Load the extension
-
-1. Open `chrome://extensions/`
-2. Enable **Developer mode**
-3. Click **Load unpacked** → select `extension/`
-4. Click the Credify icon → sign in with seeded admin credentials
 
 ---
 
 ## 13. Environment Variables
 
-### backend/.env.example
+### backend/.env (local dev — values must be unquoted)
 
 ```env
-# Database
-DATABASE_URL="postgresql://credify:password@localhost:5432/credify"
-
-# JWT — generate with: openssl rand -base64 64
-JWT_ACCESS_SECRET="<64-byte-base64-string>"
-JWT_REFRESH_SECRET="<64-byte-base64-string>"
-JWT_ACCESS_EXPIRY="15m"
-JWT_REFRESH_EXPIRY="30d"
-
-# AES master key — generate with: openssl rand -hex 32
-AES_MASTER_KEY="<32-byte-hex-string>"
-
-# HMAC signing key
-HMAC_SECRET="<32-byte-hex-string>"
-
-# App
-NEXT_PUBLIC_API_BASE_URL="http://localhost:3000"
-NODE_ENV="development"
+DATABASE_URL=postgresql://credify:dev_password@localhost:5432/credify
+JWT_ACCESS_SECRET=<64-byte-base64 — node -e "require('crypto').randomBytes(64).toString('base64')">
+JWT_REFRESH_SECRET=<64-byte-base64>
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_EXPIRY=30d
+AES_MASTER_KEY=<32-byte-hex — node -e "require('crypto').randomBytes(32).toString('hex')">
+HMAC_SECRET=<32-byte-hex>
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3000
+NODE_ENV=development
 ```
 
-> **Never commit `.env` or real secrets.** In production all secrets are injected at runtime from GCP Secret Manager.
+### Notes on format
+
+| Rule | Reason |
+|------|--------|
+| **No surrounding quotes** on values | Prisma's `env()` reads raw — `"postgres://..."` would include literal quote chars |
+| **Never commit `.env`** | It's in `.gitignore`. Real secrets go to GCP Secret Manager in production |
+| **Rotate secrets between environments** | Dev secrets in `.env` must never be reused in staging/prod |
+
+### Production (GCP Secret Manager)
+
+All secrets are injected at Cloud Run startup via `--set-secrets`. See [deploy.yml](.github/workflows/deploy.yml) for the full list:
+
+```
+db-url            → DATABASE_URL
+jwt-access-secret → JWT_ACCESS_SECRET
+jwt-refresh-secret→ JWT_REFRESH_SECRET
+aes-key           → AES_MASTER_KEY
+hmac-secret       → HMAC_SECRET
+```
 
 ---
 
 ## 14. Roadmap
 
-### v1.1 — Backend Foundation *(current sprint)*
+### v1.0 — Local Extension ✅ Complete
 
-- [ ] Next.js backend scaffold with Prisma + PostgreSQL
-- [ ] Auth endpoints (login / logout / refresh / me)
-- [ ] Forms CRUD API with AES-256-GCM encryption
-- [ ] Users and groups API
-- [ ] Docker + `docker-compose.dev.yml`
+- [x] MV3 Chrome Extension with sandboxed `app.html` builder
+- [x] `chrome.storage.local` persistence via `postMessage` bridge
+- [x] Full form builder UI — drag-and-drop, scoring, skip logic, RBAC (seeded, no real auth)
+
+### v1.1 — Backend Foundation ✅ Scaffolded & Running
+
+- [x] Next.js 16 backend scaffold with Prisma 5 + PostgreSQL 16
+- [x] Prisma schema — Organization, User, Form, Group, Block, AuditLog, RefreshToken
+- [x] Database migrations applied (`20260603215510_init`)
+- [x] Database seeded — org + admin + editor users
+- [x] Auth endpoints — `login`, `logout`, `refresh`, `me`
+- [x] JWT access tokens (HS256, 15 min) + rotating refresh tokens (30 day)
+- [x] Forms CRUD API with AES-256-GCM schema encryption
+- [x] Form sharing (`GET/POST/DELETE /api/forms/:id/share`)
+- [x] Users API (Admin only — invite, update role, soft delete)
+- [x] Groups + Blocks CRUD API
+- [x] RBAC middleware (`withAuth` + `withRole`)
+- [x] HMAC-SHA256 payload signing on write endpoints
+- [x] Sliding-window rate limiting (100 req/min auth, 500 req/min data)
+- [x] Audit log on all create/update/delete/share actions
+- [x] Dockerfile (multi-stage) + `.dockerignore`
+- [x] `docker-compose.dev.yml` + `docker-compose.prod.yml`
+- [x] GitHub Actions CI/CD → GCP Cloud Run (`deploy.yml`)
 - [ ] Extension ApiClient + hybrid online/offline mode
-- [ ] GitHub Actions CI/CD → GCP Cloud Run
-- [ ] GCP infrastructure provisioning
-
-### v1.2 — Collaboration & Audit
+- [ ] GCP infrastructure provisioning (Terraform)
 
 - [ ] Real-time form share notifications (Server-Sent Events)
 - [ ] Full audit log UI in extension

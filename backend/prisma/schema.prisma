@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum ShareAccess {
+  EDIT
+  VIEW
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users  User[]
+  forms  Form[]
+  groups Group[]
+  blocks Block[]
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  passwordHash   String
+  role           Role     @default(EDITOR)
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  ownedForms     Form[]       @relation("owner")
+  sharedForms    FormShare[]
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Form {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  schemaEnc      Bytes
+  schemaIv       String
+  schemaTag      String
+  ownerId        String
+  organizationId String
+  groupId        String?
+  scoringSections Json     @default("[]")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  owner        User         @relation("owner", fields: [ownerId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  group        Group?       @relation(fields: [groupId], references: [id])
+  shares       FormShare[]
+  auditLogs    AuditLog[]
+
+  @@index([organizationId])
+  @@index([ownerId])
+  @@index([groupId])
+}
+
+model FormShare {
+  id     String      @id @default(cuid())
+  formId String
+  userId String
+  access ShareAccess
+
+  form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, userId])
+  @@index([userId])
+}
+
+model Group {
+  id             String   @id @default(cuid())
+  name           String
+  color          String?
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  forms        Form[]
+
+  @@index([organizationId])
+}
+
+model Block {
+  id             String   @id @default(cuid())
+  name           String
+  fieldsJson     Json
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entityId  String?
+  meta      Json?
+  formId    String?
+  createdAt DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id])
+  form Form? @relation(fields: [formId], references: [id])
+
+  @@index([userId])
+  @@index([entityId])
+  @@index([formId])
+}
