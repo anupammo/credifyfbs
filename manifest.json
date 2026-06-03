@@ -2,13 +2,13 @@
   "manifest_version": 3,
   "name": "CredifyFBS Demo",
   "version": "1.0.0",
-  "description": "A demo Chrome extension following Manifest V3 best practices. Displays 'Hello World' when activated.",
+  "description": "Modular Credify form builder Chrome extension ready for future backend integration.",
   "permissions": [
-    "activeTab"
+    "activeTab",
+    "storage"
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Click to see Hello World",
+    "default_title": "Open Credify Form Builder",
     "default_icons": {
       "16": "assets/icon16.png",
       "48": "assets/icon48.png",
@@ -16,7 +16,7 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background.js"
   },
   "content_scripts": [
     {
@@ -25,7 +25,7 @@
         "http://*/*"
       ],
       "js": [
-        "content.js"
+        "src/content.js"
       ],
       "run_at": "document_idle"
     }

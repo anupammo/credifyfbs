@@ -7,6 +7,7 @@
  * - No eval() or remote code
  * - Accessibility support
  * - Clean DOM manipulation
+ * - CSP-compliant (no inline styles)
  */
 
 // DOM Elements
@@ -54,7 +55,7 @@ async function refreshPageInfo() {
     pageTitle.textContent = tab.title || 'Untitled';
     pageUrl.textContent = tab.url || 'N/A';
     
-    // Update status
+    // Update status (CSP-compliant: using class instead of inline styles)
     statusMessage.textContent = '✓ Extension Active';
     statusIndicator.classList.add('active');
     
@@ -70,21 +71,35 @@ async function refreshPageInfo() {
 
 /**
  * Display Hello World message
+ * CSP-compliant: Uses CSS classes for animations instead of inline styles
  */
 function showHelloMessage() {
-  messageSection.style.display = 'block';
+  // Show the message section
+  messageSection.classList.remove('hidden');
   
-  // Animate the message
-  helloMessage.style.animation = 'none';
-  // Trigger reflow to restart animation
-  void helloMessage.offsetWidth;
-  helloMessage.style.animation = 'fadeInScale 0.5s ease-out';
+  // Reset animation by removing and re-adding the animation class
+  helloMessage.classList.remove('animate-message');
   
+  // Trigger reflow to restart animation (must happen after class removal)
+  // Using a small setTimeout ensures the browser recognizes the class change
+  setTimeout(() => {
+    helloMessage.classList.add('animate-message');
+  }, 10);
+  
+  // Update timestamp
   const now = new Date();
   messageTime.textContent = `Displayed at ${now.toLocaleTimeString()}`;
   
   // Log to console
   console.log('[CredifyFBS] Hello World message displayed');
+}
+
+/**
+ * Hide the message section
+ * CSP-compliant: Uses CSS classes instead of inline styles
+ */
+function hideMessageSection() {
+  messageSection.classList.add('hidden');
 }
 
 /**
@@ -102,6 +117,9 @@ helloButton.addEventListener('click', showHelloMessage);
  */
 document.addEventListener('DOMContentLoaded', () => {
   console.log('[CredifyFBS] Popup initialized');
+  
+  // Initially hide message section (CSP-compliant)
+  hideMessageSection();
   
   // Update time immediately and every second
   updateTime();

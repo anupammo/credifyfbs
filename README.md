@@ -103,32 +103,25 @@ bash generate-icons.sh
 ```
 CredifyFBS/
 │
-├─ 🔧 Core Extension (7 files, ~16 KB)
-│  ├─ manifest.json              Manifest V3 configuration
-│  ├─ background.js              Service worker (event-driven)
-│  ├─ content.js                 Page interaction script
-│  ├─ popup.html                 User interface (HTML5)
-│  ├─ popup.js                   Interactive logic
-│  ├─ style.css                  Credify design system
-│  └─ assets/
-│     ├─ icon16.png              (toolbar)
-│     ├─ icon48.png              (panel)
-│     └─ icon128.png             (Chrome Web Store)
-│
-├─ 🛠️ Utilities (3 generators)
-│  ├─ generate-icons.py          Python icon generator
-│  ├─ generate-icons.js          Node.js icon generator
-│  └─ generate-icons.sh          Bash icon generator
-│
-└─ 📖 Documentation (7 files, ~63 KB)
-   ├─ 00_START_HERE.md           Navigation hub
-   ├─ README.md                  This file
-   ├─ SETUP_GUIDE.md             Detailed setup
-   ├─ BEST_PRACTICES.md          Security & quality (18 KB)
-   ├─ PROJECT_SUMMARY.md         Technical overview
-   ├─ CHROME_WEB_STORE_SUBMISSION.md  Store deployment
-   └─ FILES_MANIFEST.txt         Complete inventory
+├─ manifest.json                  Manifest V3 configuration
+├─ assets/                        Extension icons and static assets
+├─ src/                           Modular source files
+│  ├─ background.js               Service worker entrypoint
+│  ├─ content.js                  Content script logic
+│  ├─ styles/
+│  │  └─ popup.css                Popup UX styles
+│  └─ popup/
+│     ├─ index.html               Popup UI entrypoint
+│     ├─ app.js                   Popup application bootstrap
+│     ├─ apiService.js            Storage + backend stub API layer
+│     └─ formBuilder.js           Modular form builder logic
+├─ popup.html                     Legacy popup (unused after migration)
+├─ popup.js                       Legacy popup script (unused after migration)
+├─ style.css                      Legacy styles (unused after migration)
+├─ README.md                      Documentation
+└─ README.txt                     Legacy notes
 ```
+
 
 ---
 

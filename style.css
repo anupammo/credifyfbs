@@ -262,6 +262,11 @@ section h3 {
   animation: slideIn 0.3s ease-out;
 }
 
+/* Hidden state (CSP-compliant alternative to display: none) */
+.message-section.hidden {
+  display: none;
+}
+
 .message-box {
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent-light) 100%);
   border-radius: var(--radius-lg);
@@ -276,6 +281,10 @@ section h3 {
   font-weight: 600;
   color: var(--color-white);
   margin-bottom: var(--space-md);
+}
+
+/* Animation class applied via JavaScript (CSP-compliant) */
+.hello-text.animate-message {
   animation: fadeInScale 0.5s ease-out;
 }
 
