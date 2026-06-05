@@ -957,4 +957,8 @@ Instrument Serif + Sora load from Google Fonts. The sandbox CSP allows `https://
 
 **Version** 1.2.0 (Full Stack — GCP Deployment Ready)  
 **Maintainer** Credify Internal Engineering  
-**Branch** `v1.2` · MV3 · Chrome / Edge / Brave / Opera
+**Branch** `v1.2` · MV3 · Chrome / Edge / Brave / Opera 
+
+---
+
+This is the ready to deploy version tested in local successfully
