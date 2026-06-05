@@ -6,7 +6,7 @@ export type AuthedRequest = NextRequest & { user: AccessTokenPayload };
 type Handler = (req: AuthedRequest, ctx: { params: Record<string, string> }) => Promise<NextResponse>;
 
 export function withAuth(handler: Handler) {
-  return async (req: NextRequest, ctx: { params: Record<string, string> }) => {
+  return async (req: NextRequest, ctx: { params: Promise<Record<string, string>> }) => {
     const authHeader = req.headers.get("authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return NextResponse.json({ error: "Unauthorized", code: "MISSING_TOKEN" }, { status: 401 });
@@ -16,7 +16,8 @@ export function withAuth(handler: Handler) {
     try {
       const payload = verifyAccessToken(token);
       (req as AuthedRequest).user = payload;
-      return handler(req as AuthedRequest, ctx);
+      const resolvedCtx = { params: await ctx.params };
+      return handler(req as AuthedRequest, resolvedCtx);
     } catch {
       return NextResponse.json({ error: "Unauthorized", code: "INVALID_TOKEN" }, { status: 401 });
     }
