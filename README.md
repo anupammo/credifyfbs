@@ -2,7 +2,7 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Version](https://img.shields.io/badge/Extension-v1.0.0-green)](./manifest.json)
+[![Version](https://img.shields.io/badge/Extension-v1.2.0-green)](./manifest.json)
 [![Backend](https://img.shields.io/badge/Backend-Next.js_16-black)](./backend)
 [![DB](https://img.shields.io/badge/Database-PostgreSQL_16-blue)](./backend/prisma)
 [![Deploy](https://img.shields.io/badge/Deploy-GCP_Cloud_Run-orange)](./infra)
@@ -105,7 +105,7 @@ app.html  (sandboxed) ── localStorage shim
 │                                                                 │
 │   ┌──────────────────────┐     ┌────────────────────────────┐  │
 │   │   Chrome Extension   │     │    Cloud Run Service       │  │
-│   │   (MV3 · v1.1)       │────▶│    Next.js 14 App Router   │  │
+│   │   (MV3 · v1.2)       │────▶│    Next.js 16 App Router   │  │
 │   │                      │HTTPS│    (API Routes only)       │  │
 │   │  background.js       │     │                            │  │
 │   │  └─ ApiClient        │     │  /api/auth/**              │  │
@@ -158,7 +158,7 @@ app.html  (sandboxed) ── localStorage shim
 
 | Concern | Choice | Why |
 |---------|--------|-----|
-| **Backend framework** | **Next.js 14** (App Router, API routes only) | Zero config, TypeScript first, edge-ready, easy Docker packaging, no extra Express boilerplate |
+| **Backend framework** | **Next.js 16** (App Router, API routes only) | Zero config, TypeScript first, edge-ready, easy Docker packaging, no extra Express boilerplate |
 | **Database** | **PostgreSQL 16** | Native `JSONB` for form schemas, `pgcrypto` for at-rest field encryption, robust ACID guarantees, Cloud SQL managed |
 | **ORM** | **Prisma** | Type-safe client, auto-migrations, JSONB support, excellent TS DX |
 | **Authentication** | **NextAuth.js v5** (Credentials + JWT) | Handles session lifecycle, CSRF, token rotation; extensible to SSO later |
@@ -620,7 +620,6 @@ CMD ["node", "server.js"]
 
 ```yaml
 # docker/docker-compose.dev.yml
-version: '3.9'
 services:
   postgres:
     image: postgres:16-alpine
@@ -630,15 +629,34 @@ services:
       POSTGRES_PASSWORD: dev_password
     ports: ['5432:5432']
     volumes: ['pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U credify']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
-    build: ../backend
+    build:
+      context: ../backend
+      target: builder
+    command: npm run dev
     environment:
       DATABASE_URL: postgresql://credify:dev_password@postgres:5432/credify
-      JWT_SECRET: ${JWT_SECRET}
-      AES_MASTER_KEY: ${AES_MASTER_KEY}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_in_prod}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_in_prod}
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 30d
+      AES_MASTER_KEY: ${AES_MASTER_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      HMAC_SECRET: ${HMAC_SECRET:-0000000000000000000000000000000000000000000000000000000000000000}
+      NODE_ENV: development
     ports: ['3000:3000']
-    depends_on: [postgres]
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:
@@ -791,15 +809,25 @@ Invoke-RestMethod -Uri "http://localhost:3000/api/auth/login" `
 3. Click **Load unpacked** → select the repo root (`credifyfbs/`)
 4. Click the Credify icon — the form builder opens in a new window
 
-### Optional: Docker Compose
+### Optional: Docker Compose (recommended for clean local setup)
 
-If Docker Desktop is installed, you can run the full stack instead:
+If Docker Desktop is installed, you can run the full stack without a local PostgreSQL install:
 
-```bash
-cd docker
-docker compose -f docker-compose.dev.yml up -d
-cd ../backend && npx prisma migrate dev && npm run db:seed && npx next dev
+```powershell
+# 1. Update the lock file (first time only)
+cd backend
+npm install
+
+# 2. Start Postgres + backend
+cd ..\docker
+docker compose -f docker-compose.dev.yml up --build
+
+# 3. In a second terminal — run migrations and seed
+docker compose -f docker-compose.dev.yml exec backend npm run db:migrate
+docker compose -f docker-compose.dev.yml exec backend npm run db:seed
 ```
+
+> **Note:** Prisma requires `binaryTargets = ["native", "linux-musl-openssl-3.0.x"]` in `schema.prisma` for the Alpine Linux container — this is already set.
 
 ---
 
@@ -849,7 +877,7 @@ hmac-secret       → HMAC_SECRET
 - [x] `chrome.storage.local` persistence via `postMessage` bridge
 - [x] Full form builder UI — drag-and-drop, scoring, skip logic, RBAC (seeded, no real auth)
 
-### v1.1 — Backend Foundation ✅ Scaffolded & Running
+### v1.1 — Backend Foundation ✅ Complete
 
 - [x] Next.js 16 backend scaffold with Prisma 5 + PostgreSQL 16
 - [x] Prisma schema — Organization, User, Form, Group, Block, AuditLog, RefreshToken
@@ -868,9 +896,17 @@ hmac-secret       → HMAC_SECRET
 - [x] Dockerfile (multi-stage) + `.dockerignore`
 - [x] `docker-compose.dev.yml` + `docker-compose.prod.yml`
 - [x] GitHub Actions CI/CD → GCP Cloud Run (`deploy.yml`)
+- [x] Multiple instance UI fix
+
+### v1.2 — GCP Deployment Ready ✅ Complete
+
+- [x] Next.js 16 App Router `params` type fix (`Promise<Record<string, string>>`) for `withAuth` middleware
+- [x] Prisma `binaryTargets` set to `["native", "linux-musl-openssl-3.0.x"]` for Alpine Linux Docker builds
+- [x] Docker Compose `version` field removed (Compose v2 spec)
+- [x] `package-lock.json` synced — `@types/uuid` upgraded to v11
+- [x] Full codebase verified and ready to deploy on GCP Cloud Run
 - [ ] Extension ApiClient + hybrid online/offline mode
 - [ ] GCP infrastructure provisioning (Terraform)
-
 - [ ] Real-time form share notifications (Server-Sent Events)
 - [ ] Full audit log UI in extension
 - [ ] Form version history (snapshot on every save)
@@ -919,6 +955,6 @@ Instrument Serif + Sora load from Google Fonts. The sandbox CSP allows `https://
 
 ---
 
-**Version** 1.0.0 (Extension) · 1.1.0 (Full Stack, in development)  
+**Version** 1.2.0 (Full Stack — GCP Deployment Ready)  
 **Maintainer** Credify Internal Engineering  
-**Branch** `v1.1` · MV3 · Chrome / Edge / Brave / Opera
+**Branch** `v1.2` · MV3 · Chrome / Edge / Brave / Opera
