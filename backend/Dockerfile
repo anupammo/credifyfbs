@@ -12,6 +12,7 @@ RUN npm ci
 COPY . .
 RUN npx prisma generate
 RUN npm run build
+RUN mkdir -p /app/public
 
 # Stage 3 — runtime
 FROM node:20-alpine AS runner
