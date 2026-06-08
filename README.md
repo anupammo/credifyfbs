@@ -2,16 +2,18 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Version](https://img.shields.io/badge/Extension-v1.2.0-green)](./manifest.json)
+[![Version](https://img.shields.io/badge/Release-v2.1-brightgreen)](./CHANGELOG.md)
 [![Backend](https://img.shields.io/badge/Backend-Next.js_16-black)](./backend)
 [![DB](https://img.shields.io/badge/Database-PostgreSQL_16-blue)](./backend/prisma)
 [![Deploy](https://img.shields.io/badge/Deploy-GCP_Cloud_Run-orange)](./infra)
 [![License](https://img.shields.io/badge/License-Internal--Use--Only-red)](#)
+[![Changelog](https://img.shields.io/badge/Changelog-CHANGELOG.md-blue)](./CHANGELOG.md)
 
 ---
 
 ## Table of Contents
 
+0. [Changelog](#changelog)
 1. [Project Overview](#1-project-overview)
 2. [Current State — v1.0 Extension](#2-current-state--v10-extension)
 3. [Target Architecture — v1.1 Full Stack](#3-target-architecture--v11-full-stack)
@@ -26,6 +28,21 @@
 12. [Development Quickstart](#12-development-quickstart)
 13. [Environment Variables](#13-environment-variables)
 14. [Roadmap](#14-roadmap)
+
+---
+
+## Changelog
+
+Full version history with per-commit details: **[CHANGELOG.md](./CHANGELOG.md)**
+
+| Branch | Date | Summary |
+|--------|------|---------|
+| [v2.1](#) | 2026-06-06 | **Current.** Dockerfile hotfixes — `public/` dir + OpenSSL for Prisma on Alpine |
+| [v2](#) | 2026-06-06 | Stable release cut; first production-deployment-ready branch |
+| [v1.2](#) | 2026-06-05 | Next.js 16 params type fix, Prisma Alpine binary targets, Docker Compose v2 spec |
+| [v1.1](#) | 2026-06-04 | Full Next.js 16 backend scaffold — all API routes, auth, crypto, CI/CD |
+| [v1.0](#) | 2026-06-03 | Extension new-tab fix, icon assets, MV3 service worker rewrite |
+| [v0.1](#) | 2026-06-03 | Initial complete MV3 Chrome Extension UI (form builder, scoring, skip logic) |
 
 ---
 
@@ -905,21 +922,33 @@ hmac-secret       → HMAC_SECRET
 - [x] Docker Compose `version` field removed (Compose v2 spec)
 - [x] `package-lock.json` synced — `@types/uuid` upgraded to v11
 - [x] Full codebase verified and ready to deploy on GCP Cloud Run
+
+### v2 — Stable Release ✅ Complete  *(2026-06-06)*
+
+- [x] Docker build fix — `RUN mkdir -p /app/public` in builder stage (Next.js standalone requirement)
+- [x] Docker runtime fix — `apk add --no-cache openssl` in Alpine runner stage (Prisma dynamic linker requirement)
+- [x] End-to-end Docker image build verified
+- [x] `POST /api/auth/login` smoke-tested on local stack; returning valid JWT tokens
+- [x] First branch confirmed production-deployment-ready for GCP Cloud Run
+
+### v2.1 — Current ✅ *(2026-06-06)*
+
+> Same codebase as `v2`. Branch cut as a clean named release.
+
+- [x] All v2 fixes included
+- [x] `CHANGELOG.md` added — full per-commit history across all branches
 - [ ] Extension ApiClient + hybrid online/offline mode
 - [ ] GCP infrastructure provisioning (Terraform)
+- [ ] GCP Cloud Run staging dry-run
+
+### v3 — Collaboration & Audit *(planned)*
+
 - [ ] Real-time form share notifications (Server-Sent Events)
 - [ ] Full audit log UI in extension
 - [ ] Form version history (snapshot on every save)
 - [ ] Email invitations for new users
 
-### v1.3 — Submission Pipeline
-
-- [ ] Form submission endpoint (`POST /api/forms/:id/submissions`)
-- [ ] Submission storage and export (CSV, PDF batch)
-- [ ] Webhook delivery to EHR / third-party systems
-- [ ] Submission scoring engine (server-side, matches client preview logic)
-
-### v2.0 — Platform
+### v4 — Submission Pipeline *(planned)*
 
 - [ ] Multi-organization support
 - [ ] SSO / SAML integration
