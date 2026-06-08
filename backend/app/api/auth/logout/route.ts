@@ -8,7 +8,8 @@ export const POST = withAuth(async (req: AuthedRequest) => {
   const refreshToken = body?.refreshToken as string | undefined;
 
   if (refreshToken) {
-    await revokeRefreshToken(refreshToken);
+    // Issue 12: scope revocation to the calling user's own tokens
+    await revokeRefreshToken(refreshToken, req.user.sub);
   }
 
   return NextResponse.json({ success: true });

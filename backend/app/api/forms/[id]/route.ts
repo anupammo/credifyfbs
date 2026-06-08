@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { encryptSchema, decryptSchema } from "@/lib/crypto/aes";
 import { verifyPayloadSignature } from "@/lib/crypto/hmac";
@@ -86,11 +87,23 @@ export const PUT = withAuth(async (req: AuthedRequest, { params }: Ctx) => {
     return NextResponse.json({ error: "Validation failed", code: "VALIDATION_ERROR", issues: parsed.error.issues }, { status: 400 });
   }
 
-  const data: Record<string, unknown> = {};
+  const data: Prisma.FormUpdateInput = {};
   if (parsed.data.title !== undefined) data.title = parsed.data.title;
   if (parsed.data.description !== undefined) data.description = parsed.data.description;
-  if ("groupId" in parsed.data) data.groupId = parsed.data.groupId;
-  if (parsed.data.scoringSections !== undefined) data.scoringSections = parsed.data.scoringSections;
+  if ("groupId" in parsed.data) {
+    // Issue 3: validate groupId belongs to caller's org before writing
+    if (parsed.data.groupId !== null && parsed.data.groupId !== undefined) {
+      const group = await prisma.group.findFirst({
+        where: { id: parsed.data.groupId, organizationId: req.user.orgId },
+      });
+      if (!group) {
+        return NextResponse.json({ error: "Group not found", code: "NOT_FOUND" }, { status: 400 });
+      }
+    }
+    data.group = parsed.data.groupId ? { connect: { id: parsed.data.groupId } } : { disconnect: true };
+  }
+  if (parsed.data.scoringSections !== undefined)
+    data.scoringSections = parsed.data.scoringSections as Prisma.InputJsonValue;
   if (parsed.data.schema !== undefined) {
     const { enc, iv, tag } = encryptSchema(JSON.stringify(parsed.data.schema));
     data.schemaEnc = enc;
@@ -98,9 +111,16 @@ export const PUT = withAuth(async (req: AuthedRequest, { params }: Ctx) => {
     data.schemaTag = tag;
   }
 
-  const updated = await prisma.form.update({
+  // Issue 5: scope write to the org to eliminate TOCTOU window
+  const updateResult = await prisma.form.updateMany({
+    where: { id: params.id, organizationId: req.user.orgId },
+    data: data as Prisma.FormUncheckedUpdateInput,
+  });
+  if (updateResult.count === 0) {
+    return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
+  }
+  const updated = await prisma.form.findUnique({
     where: { id: params.id },
-    data,
     select: { id: true, title: true, updatedAt: true },
   });
 
@@ -123,7 +143,11 @@ export const DELETE = withAuth(async (req: AuthedRequest, { params }: Ctx) => {
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
   }
 
-  await prisma.form.update({ where: { id: params.id }, data: { deletedAt: new Date() } });
+  // Issue 5: scope soft-delete to org (TOCTOU fix)
+  await prisma.form.updateMany({
+    where: { id: params.id, organizationId: req.user.orgId },
+    data: { deletedAt: new Date() },
+  });
   await auditLog(req.user.sub, "form.delete", params.id, {}, params.id);
 
   return NextResponse.json({ success: true });

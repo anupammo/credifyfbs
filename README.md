@@ -2,7 +2,7 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Version](https://img.shields.io/badge/Release-v2.1-brightgreen)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Release-v2.1--hotfix-orange)](./CHANGELOG.md)
 [![Backend](https://img.shields.io/badge/Backend-Next.js_16-black)](./backend)
 [![DB](https://img.shields.io/badge/Database-PostgreSQL_16-blue)](./backend/prisma)
 [![Deploy](https://img.shields.io/badge/Deploy-GCP_Cloud_Run-orange)](./infra)
@@ -37,7 +37,8 @@ Full version history with per-commit details: **[CHANGELOG.md](./CHANGELOG.md)**
 
 | Branch | Date | Summary |
 |--------|------|---------|
-| [v2.1](#) | 2026-06-06 | **Current.** Dockerfile hotfixes — `public/` dir + OpenSSL for Prisma on Alpine |
+| [v2.1-hotfix](#) | 2026-06-08 | **Current.** Security & correctness audit — 13 DB operation bugs fixed (HIGH/MEDIUM/LOW), 0 TS errors |
+| [v2.1](#) | 2026-06-06 | Dockerfile hotfixes — `public/` dir + OpenSSL for Prisma on Alpine |
 | [v2](#) | 2026-06-06 | Stable release cut; first production-deployment-ready branch |
 | [v1.2](#) | 2026-06-05 | Next.js 16 params type fix, Prisma Alpine binary targets, Docker Compose v2 spec |
 | [v1.1](#) | 2026-06-04 | Full Next.js 16 backend scaffold — all API routes, auth, crypto, CI/CD |
@@ -931,12 +932,18 @@ hmac-secret       → HMAC_SECRET
 - [x] `POST /api/auth/login` smoke-tested on local stack; returning valid JWT tokens
 - [x] First branch confirmed production-deployment-ready for GCP Cloud Run
 
-### v2.1 — Current ✅ *(2026-06-06)*
+### v2.1 — Complete ✅ *(2026-06-06)*
 
-> Same codebase as `v2`. Branch cut as a clean named release.
-
-- [x] All v2 fixes included
+- [x] All v2 Dockerfile fixes included
 - [x] `CHANGELOG.md` added — full per-commit history across all branches
+
+### v2.1-hotfix — Security & Correctness Audit ✅ *(2026-06-08)*
+
+- [x] **3 HIGH** security issues fixed — soft-deleted user auth bypass, cross-org `groupId` injection (POST + PUT), group DELETE touching foreign-org forms
+- [x] **5 MEDIUM** correctness issues fixed — TOCTOU on forms, users, groups, blocks (all writes now org-scoped); Prisma type mismatch on `FormUpdateInput`
+- [x] **3 LOW** issues fixed — share list exposes deleted users, share creation to deleted user, logout token revoke not scoped to caller
+- [x] **1 design** issue fixed — VIEWER role can now list their shared forms (`withRole` lowered + visibility filter)
+- [x] `npm run type-check` — 0 errors after all 13 fixes
 - [ ] Extension ApiClient + hybrid online/offline mode
 - [ ] GCP infrastructure provisioning (Terraform)
 - [ ] GCP Cloud Run staging dry-run

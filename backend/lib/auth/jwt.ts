@@ -52,10 +52,11 @@ export async function rotateRefreshToken(
   return { userId: stored.userId, newRaw };
 }
 
-export async function revokeRefreshToken(rawToken: string): Promise<void> {
+export async function revokeRefreshToken(rawToken: string, userId?: string): Promise<void> {
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  // Issue 12: scope revocation to the owning user when userId is provided
   await prisma.refreshToken.updateMany({
-    where: { tokenHash },
+    where: { tokenHash, ...(userId ? { userId } : {}) },
     data: { revokedAt: new Date() },
   });
 }

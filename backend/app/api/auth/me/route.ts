@@ -4,8 +4,8 @@ import { withAuth } from "@/lib/middleware/withAuth";
 import type { AuthedRequest } from "@/lib/middleware/withAuth";
 
 export const GET = withAuth(async (req: AuthedRequest) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user.sub },
+  const user = await prisma.user.findFirst({
+    where: { id: req.user.sub, deletedAt: null },
     select: { id: true, email: true, name: true, role: true, organizationId: true, createdAt: true },
   });
 

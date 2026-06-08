@@ -29,7 +29,13 @@ export const PUT = withAuth(
     const existing = await prisma.group.findFirst({ where: { id: params.id, organizationId: req.user.orgId } });
     if (!existing) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-    const group = await prisma.group.update({ where: { id: params.id }, data: parsed.data });
+    // Issue 8: scope write to org to eliminate TOCTOU
+    const updateResult = await prisma.group.updateMany({
+      where: { id: params.id, organizationId: req.user.orgId },
+      data: parsed.data,
+    });
+    if (updateResult.count === 0) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
+    const group = await prisma.group.findUnique({ where: { id: params.id } });
     await auditLog(req.user.sub, "group.update", params.id);
 
     return NextResponse.json({ group });
@@ -45,9 +51,12 @@ export const DELETE = withAuth(
     const existing = await prisma.group.findFirst({ where: { id: params.id, organizationId: req.user.orgId } });
     if (!existing) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-    // Unlink forms before deleting
-    await prisma.form.updateMany({ where: { groupId: params.id }, data: { groupId: null } });
-    await prisma.group.delete({ where: { id: params.id } });
+    // Issue 6: scope form unlink to org; Issue 8: scope delete to org
+    await prisma.form.updateMany({
+      where: { groupId: params.id, organizationId: req.user.orgId },
+      data: { groupId: null },
+    });
+    await prisma.group.deleteMany({ where: { id: params.id, organizationId: req.user.orgId } });
     await auditLog(req.user.sub, "group.delete", params.id);
 
     return NextResponse.json({ success: true });

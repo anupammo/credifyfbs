@@ -25,10 +25,14 @@ export const GET = withAuth(async (req: AuthedRequest, { params }: Ctx) => {
   const form = await assertOwnerOrAdmin(req, params.id);
   if (!form) return NextResponse.json({ error: "Not found or forbidden", code: "NOT_FOUND" }, { status: 404 });
 
-  const shares = await prisma.formShare.findMany({
+  const allShares = await prisma.formShare.findMany({
     where: { formId: params.id },
-    include: { user: { select: { id: true, name: true, email: true, role: true } } },
+    include: { user: { select: { id: true, name: true, email: true, role: true, deletedAt: true } } },
   });
+  // Issue 11: exclude shares belonging to soft-deleted users
+  const shares = allShares
+    .filter((s) => s.user.deletedAt === null)
+    .map(({ user: { deletedAt: _d, ...u }, ...s }) => ({ ...s, user: u }));
 
   return NextResponse.json({ shares });
 });
@@ -54,8 +58,8 @@ export const POST = withAuth(async (req: AuthedRequest, { params }: Ctx) => {
 
   const { userId, access } = parsed.data;
 
-  // Validate target user belongs to same org
-  const target = await prisma.user.findFirst({ where: { id: userId, organizationId: req.user.orgId } });
+  // Issue 10: validate target user belongs to same org and is not soft-deleted
+  const target = await prisma.user.findFirst({ where: { id: userId, organizationId: req.user.orgId, deletedAt: null } });
   if (!target) {
     return NextResponse.json({ error: "User not found in organisation", code: "USER_NOT_FOUND" }, { status: 400 });
   }

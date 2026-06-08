@@ -20,7 +20,7 @@ const createSchema = z.object({
 
 // GET /api/forms
 export const GET = withAuth(
-  withRole("EDITOR", async (req: AuthedRequest) => {
+  withRole("VIEWER", async (req: AuthedRequest) => {
     const limited = dataLimiter(req);
     if (limited) return limited;
 
@@ -29,9 +29,16 @@ export const GET = withAuth(
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") ?? "25")));
     const search = url.searchParams.get("search") ?? "";
 
-    const where = {
+    // VIEWERs can only see forms they own or have been explicitly shared with
+    const visibilityFilter: Prisma.FormWhereInput =
+      req.user.role === "VIEWER"
+        ? { OR: [{ ownerId: req.user.sub }, { shares: { some: { userId: req.user.sub } } }] }
+        : {};
+
+    const where: Prisma.FormWhereInput = {
       organizationId: req.user.orgId,
       deletedAt: null,
+      ...visibilityFilter,
       ...(search ? { title: { contains: search, mode: "insensitive" as const } } : {}),
     };
 
@@ -82,6 +89,17 @@ export const POST = withAuth(
     }
 
     const { title, description, schema, groupId, scoringSections } = parsed.data;
+
+    // Issue 2: validate groupId belongs to the caller's org before using it
+    if (groupId) {
+      const group = await prisma.group.findFirst({
+        where: { id: groupId, organizationId: req.user.orgId },
+      });
+      if (!group) {
+        return NextResponse.json({ error: "Group not found", code: "NOT_FOUND" }, { status: 400 });
+      }
+    }
+
     const { enc, iv, tag } = encryptSchema(JSON.stringify(schema));
 
     const form = await prisma.form.create({

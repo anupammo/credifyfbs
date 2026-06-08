@@ -31,9 +31,14 @@ export const PUT = withAuth(
     });
     if (!target) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-    const user = await prisma.user.update({
-      where: { id: params.id },
+    // Issue 7: scope write to org to eliminate TOCTOU
+    const updateResult = await prisma.user.updateMany({
+      where: { id: params.id, organizationId: req.user.orgId, deletedAt: null },
       data: parsed.data,
+    });
+    if (updateResult.count === 0) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
+    const user = await prisma.user.findUnique({
+      where: { id: params.id },
       select: { id: true, email: true, name: true, role: true },
     });
 
@@ -58,7 +63,11 @@ export const DELETE = withAuth(
     });
     if (!target) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-    await prisma.user.update({ where: { id: params.id }, data: { deletedAt: new Date() } });
+    // Issue 7: scope soft-delete to org (TOCTOU fix)
+    await prisma.user.updateMany({
+      where: { id: params.id, organizationId: req.user.orgId },
+      data: { deletedAt: new Date() },
+    });
     await auditLog(req.user.sub, "user.delete", params.id, { email: target.email });
 
     return NextResponse.json({ success: true });

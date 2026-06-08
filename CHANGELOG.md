@@ -5,6 +5,100 @@ Branch tags map 1-to-1 to git branch names.
 
 ---
 
+## [v2.1-hotfix] — 2026-06-08  *(current — unreleased, in-progress)*
+
+> Security & correctness audit of all database CREATE / UPDATE / DELETE operations.
+> 13 issues identified and fixed. TypeScript type-check passes with zero errors post-fix.
+
+### Security — Fixed
+
+- **Issue 1 · HIGH — `GET /api/auth/me` returns 200 for soft-deleted users**
+  - File: `app/api/auth/me/route.ts`
+  - `findUnique` has no `deletedAt` filter; a deleted user holding a valid JWT received their full profile.
+  - Fix: switched to `findFirst` with `deletedAt: null`.
+
+- **Issue 2 · HIGH — `POST /api/forms` cross-org `groupId` injection**
+  - File: `app/api/forms/route.ts`
+  - Client-supplied `groupId` was written directly to the DB without verifying it belonged to the caller's organisation.
+  - Fix: added `group.findFirst({ where: { id: groupId, organizationId: req.user.orgId } })` guard before `form.create`.
+
+- **Issue 3 · HIGH — `PUT /api/forms/:id` cross-org `groupId` injection**
+  - File: `app/api/forms/[id]/route.ts`
+  - Same as Issue 2 but for updates.
+  - Fix: org-membership check on `groupId` before writing; used Prisma relation syntax (`group: { connect } / { disconnect }`).
+
+- **Issue 6 · HIGH — `DELETE /api/groups/:id` unlinks forms from all organisations**
+  - File: `app/api/groups/[id]/route.ts`
+  - `form.updateMany({ where: { groupId } })` had no `organizationId` filter; would touch forms in other orgs.
+  - Fix: added `organizationId: req.user.orgId` to the `form.updateMany` where clause.
+
+- **Issue 12 · LOW — logout `revokeRefreshToken` not scoped to calling user**
+  - Files: `lib/auth/jwt.ts`, `app/api/auth/logout/route.ts`
+  - `revokeRefreshToken` only matched by `tokenHash`; any authenticated user who obtained another user's raw token string could revoke it.
+  - Fix: added optional `userId` parameter to `revokeRefreshToken`; logout handler passes `req.user.sub`.
+
+### Correctness — Fixed
+
+- **Issue 4 · MEDIUM — `PUT /api/forms/:id` Prisma type mismatch**
+  - File: `app/api/forms/[id]/route.ts`
+  - `data` object typed as `Record<string, unknown>` instead of `Prisma.FormUpdateInput`; `scoringSections` lacked `Prisma.InputJsonValue` cast.
+  - Fix: typed `data` as `Prisma.FormUpdateInput`; added cast for `scoringSections`.
+
+- **Issue 5 · MEDIUM — TOCTOU on `PUT` and `DELETE /api/forms/:id`**
+  - File: `app/api/forms/[id]/route.ts`
+  - `prisma.form.update({ where: { id } })` performed the write without an org constraint, creating a time-of-check to time-of-use gap.
+  - Fix: switched both writes to `updateMany({ where: { id, organizationId } })`.
+
+- **Issue 7 · MEDIUM — TOCTOU on `PUT` and `DELETE /api/users/:id`**
+  - File: `app/api/users/[id]/route.ts`
+  - Same pattern — `user.update` and soft-delete `user.update` unscoped by org.
+  - Fix: switched to `user.updateMany` with `organizationId` + `deletedAt: null` in both `PUT` and `DELETE`.
+
+- **Issue 8 · MEDIUM — TOCTOU on `PUT` and `DELETE /api/groups/:id`**
+  - File: `app/api/groups/[id]/route.ts`
+  - `group.update` / `group.delete` unscoped by org.
+  - Fix: switched to `group.updateMany` / `group.deleteMany` with org scope.
+
+- **Issue 9 · MEDIUM — TOCTOU on `PUT` and `DELETE /api/blocks/:id`**
+  - File: `app/api/blocks/[id]/route.ts`
+  - `block.update` / `block.delete` unscoped by org.
+  - Fix: switched to `block.updateMany` / `block.deleteMany` with org scope; typed update payload as `Prisma.BlockUncheckedUpdateInput`.
+
+- **Issue 10 · LOW — `POST /api/forms/:id/share` can create share for deleted user**
+  - File: `app/api/forms/[id]/share/route.ts`
+  - Target user lookup missing `deletedAt: null`; produced a dangling `FormShare` record.
+  - Fix: added `deletedAt: null` to the `user.findFirst` call.
+
+- **Issue 11 · LOW — `GET /api/forms/:id/share` exposes soft-deleted users**
+  - File: `app/api/forms/[id]/share/route.ts`
+  - `formShare.findMany` included deleted users' `name`/`email`/`role` in the response.
+  - Fix: fetch `deletedAt` on the user relation, filter shares post-query, strip `deletedAt` from response.
+
+### Design — Improved
+
+- **Issue 13 · INFO — `GET /api/forms` blocked VIEWERs from listing shared forms**
+  - File: `app/api/forms/route.ts`
+  - `withRole("EDITOR")` minimum blocked VIEWERs; but `GET /api/forms/:id` allowed VIEWERs with a share.
+  - Fix: lowered to `withRole("VIEWER")`; added visibility `OR` filter — VIEWERs see only forms they own or have been shared with. EDITORs and ADMINs see all org forms.
+
+### Files changed
+| File | Issues fixed |
+|------|-------------|
+| `app/api/auth/me/route.ts` | #1 |
+| `app/api/auth/logout/route.ts` | #12 |
+| `app/api/forms/route.ts` | #2, #13 |
+| `app/api/forms/[id]/route.ts` | #3, #4, #5 |
+| `app/api/forms/[id]/share/route.ts` | #10, #11 |
+| `app/api/users/[id]/route.ts` | #7 |
+| `app/api/groups/[id]/route.ts` | #6, #8 |
+| `app/api/blocks/[id]/route.ts` | #9 |
+| `lib/auth/jwt.ts` | #12 |
+
+### Verification
+- `npm run type-check` — **0 errors** after all fixes applied.
+
+---
+
 ## [v2.1] — 2026-06-06  *(current)*
 
 > **Note:** `v2.1` is identical in content to `v2`; the branch was cut to create a clean named release tag.

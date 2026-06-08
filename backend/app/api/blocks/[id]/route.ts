@@ -30,10 +30,16 @@ export const PUT = withAuth(
     const existing = await prisma.block.findFirst({ where: { id: params.id, organizationId: req.user.orgId } });
     if (!existing) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-    const updateData: Prisma.BlockUpdateInput = {};
+    // Issue 9: scope write to org to eliminate TOCTOU
+    const updateData: Prisma.BlockUncheckedUpdateInput = {};
     if (parsed.data.name !== undefined) updateData.name = parsed.data.name;
     if (parsed.data.fieldsJson !== undefined) updateData.fieldsJson = parsed.data.fieldsJson as Prisma.InputJsonValue;
-    const block = await prisma.block.update({ where: { id: params.id }, data: updateData });
+    const blockResult = await prisma.block.updateMany({
+      where: { id: params.id, organizationId: req.user.orgId },
+      data: updateData,
+    });
+    if (blockResult.count === 0) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
+    const block = await prisma.block.findUnique({ where: { id: params.id } });
     await auditLog(req.user.sub, "block.update", params.id);
 
     return NextResponse.json({ block });
@@ -49,7 +55,8 @@ export const DELETE = withAuth(
     const existing = await prisma.block.findFirst({ where: { id: params.id, organizationId: req.user.orgId } });
     if (!existing) return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 
-    await prisma.block.delete({ where: { id: params.id } });
+    // Issue 9: scope delete to org (TOCTOU fix)
+    await prisma.block.deleteMany({ where: { id: params.id, organizationId: req.user.orgId } });
     await auditLog(req.user.sub, "block.delete", params.id);
 
     return NextResponse.json({ success: true });
