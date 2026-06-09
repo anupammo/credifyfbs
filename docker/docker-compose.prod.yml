@@ -11,6 +11,8 @@ services:
       POSTGRES_DB: credify
       POSTGRES_USER: credify
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - '5433:5432'
     volumes:
       - pgdata_prod:/var/lib/postgresql/data
     healthcheck:
