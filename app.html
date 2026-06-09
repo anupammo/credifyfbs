@@ -71,6 +71,259 @@
   }
 })();
 </script>
+<script>
+/* ──────────────────────────────────────────────────────────────────────────
+   Credify API Client — Connects extension to backend
+   ────────────────────────────────────────────────────────────────────────── */
+(function() {
+  const API_BASE = 'http://35.255.131.130:3000/api';
+  const TOKEN_KEY = 'credify_auth_tokens';
+  
+  // Auth state
+  let accessToken = null;
+  let refreshToken = null;
+  let currentApiUser = null;
+  let isOnline = true;
+  
+  // Load tokens from storage
+  function loadTokens() {
+    try {
+      const stored = localStorage.getItem(TOKEN_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        accessToken = parsed.accessToken || null;
+        refreshToken = parsed.refreshToken || null;
+        currentApiUser = parsed.user || null;
+      }
+    } catch(e) {}
+  }
+  
+  function saveTokens() {
+    try {
+      localStorage.setItem(TOKEN_KEY, JSON.stringify({
+        accessToken, refreshToken, user: currentApiUser
+      }));
+    } catch(e) {}
+  }
+  
+  function clearTokens() {
+    accessToken = null;
+    refreshToken = null;
+    currentApiUser = null;
+    try { localStorage.removeItem(TOKEN_KEY); } catch(e) {}
+  }
+  
+  // Check if token is expired
+  function isTokenExpired(token) {
+    if (!token) return true;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.exp * 1000 < Date.now();
+    } catch(e) { return true; }
+  }
+  
+  // Refresh access token
+  async function refreshAccessToken() {
+    if (!refreshToken) return false;
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        accessToken = data.accessToken;
+        refreshToken = data.refreshToken;
+        saveTokens();
+        return true;
+      }
+    } catch(e) {
+      isOnline = false;
+    }
+    return false;
+  }
+  
+  // Make authenticated API request
+  async function apiRequest(endpoint, options = {}) {
+    // Check/refresh token if needed
+    if (isTokenExpired(accessToken)) {
+      const refreshed = await refreshAccessToken();
+      if (!refreshed && endpoint !== '/auth/login') {
+        return { error: 'Not authenticated', code: 'NOT_AUTHENTICATED' };
+      }
+    }
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
+      ...options.headers
+    };
+    
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers
+      });
+      isOnline = true;
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.error || 'Request failed', code: data.code || 'ERROR', status: res.status };
+      }
+      return data;
+    } catch(e) {
+      isOnline = false;
+      return { error: 'Network error', code: 'NETWORK_ERROR', offline: true };
+    }
+  }
+  
+  // Public API
+  window.CredifyAPI = {
+    // Auth
+    async login(email, password) {
+      const data = await apiRequest('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+      if (data.accessToken) {
+        accessToken = data.accessToken;
+        refreshToken = data.refreshToken;
+        currentApiUser = data.user;
+        saveTokens();
+        return { success: true, user: data.user };
+      }
+      return { success: false, error: data.error || 'Login failed' };
+    },
+    
+    async logout() {
+      await apiRequest('/auth/logout', { method: 'POST' });
+      clearTokens();
+    },
+    
+    async getMe() {
+      return apiRequest('/auth/me');
+    },
+    
+    isLoggedIn() {
+      return !!accessToken && !!currentApiUser;
+    },
+    
+    getCurrentUser() {
+      return currentApiUser;
+    },
+    
+    isOnline() {
+      return isOnline;
+    },
+    
+    // Users
+    async getUsers(page = 1, limit = 100) {
+      return apiRequest(`/users?page=${page}&limit=${limit}`);
+    },
+    
+    async createUser(userData) {
+      return apiRequest('/users', {
+        method: 'POST',
+        body: JSON.stringify(userData)
+      });
+    },
+    
+    async updateUser(id, userData) {
+      return apiRequest(`/users/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(userData)
+      });
+    },
+    
+    async deleteUser(id) {
+      return apiRequest(`/users/${id}`, { method: 'DELETE' });
+    },
+    
+    // Forms
+    async getForms(page = 1, limit = 100) {
+      return apiRequest(`/forms?page=${page}&limit=${limit}`);
+    },
+    
+    async getForm(id) {
+      return apiRequest(`/forms/${id}`);
+    },
+    
+    async createForm(formData) {
+      return apiRequest('/forms', {
+        method: 'POST',
+        body: JSON.stringify(formData)
+      });
+    },
+    
+    async updateForm(id, formData) {
+      return apiRequest(`/forms/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(formData)
+      });
+    },
+    
+    async deleteForm(id) {
+      return apiRequest(`/forms/${id}`, { method: 'DELETE' });
+    },
+    
+    async shareForm(id, userId, access) {
+      return apiRequest(`/forms/${id}/share`, {
+        method: 'POST',
+        body: JSON.stringify({ userId, access })
+      });
+    },
+    
+    // Groups
+    async getGroups() {
+      return apiRequest('/groups');
+    },
+    
+    async createGroup(groupData) {
+      return apiRequest('/groups', {
+        method: 'POST',
+        body: JSON.stringify(groupData)
+      });
+    },
+    
+    async updateGroup(id, groupData) {
+      return apiRequest(`/groups/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(groupData)
+      });
+    },
+    
+    async deleteGroup(id) {
+      return apiRequest(`/groups/${id}`, { method: 'DELETE' });
+    },
+    
+    // Blocks
+    async getBlocks() {
+      return apiRequest('/blocks');
+    },
+    
+    async createBlock(blockData) {
+      return apiRequest('/blocks', {
+        method: 'POST',
+        body: JSON.stringify(blockData)
+      });
+    },
+    
+    async updateBlock(id, blockData) {
+      return apiRequest(`/blocks/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(blockData)
+      });
+    },
+    
+    async deleteBlock(id) {
+      return apiRequest(`/blocks/${id}`, { method: 'DELETE' });
+    }
+  };
+  
+  // Initialize tokens on load
+  loadTokens();
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -411,6 +664,18 @@ button{font-family:'Sora',sans-serif;cursor:pointer}
 .x-btn{background:none;border:none;color:var(--text-muted);padding:4px;border-radius:6px;display:flex}
 .x-btn:hover{background:var(--surface);color:var(--text-main)}
 .x-btn svg{width:18px;height:18px}
+/* Login modal */
+.login-overlay{z-index:9999}
+.login-overlay.open{display:flex}
+.login-modal .modal-head{justify-content:center;border-bottom:none;padding-bottom:0}
+.login-modal .modal-head h3{font-size:24px;color:var(--green-deep)}
+.login-error{background:var(--problem-soft);color:var(--problem);padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:14px;font-size:13px;font-weight:500}
+.login-hint{text-align:center;margin-top:8px}
+.login-modal .modal-foot{justify-content:space-between}
+.api-status{position:fixed;bottom:12px;right:12px;font-size:11px;padding:5px 10px;border-radius:var(--radius-sm);z-index:50;display:flex;align-items:center;gap:6px}
+.api-status.online{background:var(--mint-pale);color:var(--green-primary)}
+.api-status.offline{background:var(--caution-soft);color:var(--caution)}
+.api-status-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
 .save-block-list{display:flex;flex-direction:column;gap:7px;margin-top:6px}
 .save-block-fieldrow{display:flex;align-items:center;gap:9px;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm)}
 
@@ -967,6 +1232,31 @@ button{font-family:'Sora',sans-serif;cursor:pointer}
   </div>
 </div>
 
+<!-- Login Modal -->
+<div class="modal-overlay login-overlay" id="login-modal">
+  <div class="modal login-modal" style="max-width:400px">
+    <div class="modal-head"><h3>Sign in to Credify</h3></div>
+    <div class="modal-body">
+      <div id="login-error" class="login-error" style="display:none"></div>
+      <div class="modal-field">
+        <label>Email</label>
+        <input type="email" id="login-email" placeholder="you@company.com" autocomplete="email">
+      </div>
+      <div class="modal-field">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password">
+      </div>
+      <div class="login-hint">
+        <span style="color:var(--text-muted);font-size:12px">Default: admin@credify.internal / admin1234!</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="login-offline-btn" onclick="loginOffline()">Work Offline</button>
+      <button class="btn primary" id="login-btn" onclick="doLogin()">Sign In</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="export-modal">
   <div class="modal">
     <div class="modal-head"><h3 id="export-title">Export form</h3><button class="x-btn" onclick="closeModal('export-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
@@ -1205,6 +1495,10 @@ let EXPORT_SHOW_SCORES=false;
 let USERS=[];
 let CURRENT_USER_ID=null;
 let SHARE_FORM_ID=null;  // which form the Share modal is currently editing
+
+/* ===== API connection state ===== */
+let API_MODE = false;    // true when connected to backend API
+let API_LOADING = false; // true while fetching data from API
 
 /* ===== Form groups / search state =====
    GROUPS: { id, name, color, ownerId } — lightweight clusters that forms can
@@ -5459,6 +5753,14 @@ function renderUserMenu(){
       Manage users…
     </div>`;
   }
+  // Logout option (when connected to API)
+  if(API_MODE){
+    html+=`<div class="user-menu-divider"></div>`;
+    html+=`<div class="user-menu-action" onclick="closeUserMenu();doLogout()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sign out
+    </div>`;
+  }
   menu.innerHTML=html;
 }
 
@@ -6211,6 +6513,8 @@ function saveForm(){
   if(i>=0) FORMS[i]=snapshot; else FORMS.push(snapshot);
   persistForms();
   try{ localStorage.setItem(LAST_FORM_KEY, FORM.id); }catch(e){}
+  // Sync to API if connected
+  if(API_MODE) saveFormToAPI();
 }
 
 function loadFormIntoEditor(id, silent){
@@ -6516,7 +6820,229 @@ function openFormsManager(){
 
 // Wrap the entire startup sequence in a function so it can be deferred
 // until the localStorage seed has been delivered via postMessage.
+
+// Show login modal
+function showLoginModal() {
+  document.getElementById('login-modal').classList.add('open');
+  document.getElementById('login-email').focus();
+}
+
+function hideLoginModal() {
+  document.getElementById('login-modal').classList.remove('open');
+  document.getElementById('login-error').style.display = 'none';
+}
+
+// Login handler
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+  
+  if (!email || !password) {
+    errorEl.textContent = 'Please enter email and password';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  
+  const result = await CredifyAPI.login(email, password);
+  
+  btn.disabled = false;
+  btn.textContent = 'Sign In';
+  
+  if (result.success) {
+    hideLoginModal();
+    API_MODE = true;
+    await loadDataFromAPI();
+    continueInit();
+    updateApiStatus(true);
+    toast('Signed in as ' + result.user.name);
+  } else {
+    errorEl.textContent = result.error || 'Login failed';
+    errorEl.style.display = 'block';
+  }
+}
+
+// Work offline (use localStorage)
+function loginOffline() {
+  hideLoginModal();
+  API_MODE = false;
+  continueInit();
+  updateApiStatus(false);
+  toast('Working offline — changes saved locally');
+}
+
+// Logout handler
+async function doLogout() {
+  await CredifyAPI.logout();
+  API_MODE = false;
+  updateApiStatus(false);
+  toast('Signed out');
+  showLoginModal();
+}
+
+// Update API status indicator
+function updateApiStatus(online) {
+  let el = document.getElementById('api-status');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'api-status';
+    el.className = 'api-status';
+    document.body.appendChild(el);
+  }
+  if (online) {
+    el.className = 'api-status online';
+    el.innerHTML = '<span class="api-status-dot"></span> Connected';
+  } else {
+    el.className = 'api-status offline';
+    el.innerHTML = '<span class="api-status-dot"></span> Offline';
+  }
+}
+
+// Load data from API
+async function loadDataFromAPI() {
+  API_LOADING = true;
+  
+  try {
+    // Load users
+    const usersRes = await CredifyAPI.getUsers();
+    if (usersRes.users) {
+      USERS = usersRes.users.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role.toLowerCase()
+      }));
+      persistUsers();
+    }
+    
+    // Set current user from API
+    const apiUser = CredifyAPI.getCurrentUser();
+    if (apiUser) {
+      CURRENT_USER_ID = apiUser.id;
+      // Ensure current user is in USERS list
+      if (!USERS.find(u => u.id === apiUser.id)) {
+        USERS.unshift({
+          id: apiUser.id,
+          name: apiUser.name,
+          email: apiUser.email,
+          role: apiUser.role.toLowerCase()
+        });
+      }
+    }
+    
+    // Load forms
+    const formsRes = await CredifyAPI.getForms();
+    if (formsRes.forms) {
+      FORMS = formsRes.forms.map(f => ({
+        id: f.id,
+        title: f.title,
+        desc: f.description || '',
+        rows: f.schema?.rows || [],
+        weightGroups: f.schema?.weightGroups || [],
+        scoringSections: f.scoringSections || [],
+        ownerId: f.ownerId,
+        shares: f.shares || [],
+        groupId: f.groupId,
+        createdAt: new Date(f.createdAt).getTime(),
+        updatedAt: new Date(f.updatedAt).getTime()
+      }));
+      persistForms();
+    }
+    
+    // Load groups
+    const groupsRes = await CredifyAPI.getGroups();
+    if (groupsRes.groups) {
+      GROUPS = groupsRes.groups.map(g => ({
+        id: g.id,
+        name: g.name,
+        color: g.color
+      }));
+      persistGroups();
+    }
+    
+    // Load blocks
+    const blocksRes = await CredifyAPI.getBlocks();
+    if (blocksRes.blocks) {
+      BLOCKS = blocksRes.blocks.map(b => ({
+        id: b.id,
+        name: b.name,
+        fields: b.fieldsJson || []
+      }));
+      persistBlocks();
+    }
+  } catch (e) {
+    console.error('Failed to load from API:', e);
+    toast('Failed to load data from server');
+  }
+  
+  API_LOADING = false;
+}
+
+// Save form to API (debounced)
+let saveFormTimeout = null;
+async function saveFormToAPI() {
+  if (!API_MODE || API_LOADING) return;
+  
+  clearTimeout(saveFormTimeout);
+  saveFormTimeout = setTimeout(async () => {
+    const formData = {
+      title: FORM.title || 'Untitled',
+      description: FORM.desc || '',
+      schema: { rows: FORM.rows, weightGroups: FORM.weightGroups },
+      scoringSections: FORM.scoringSections || [],
+      groupId: FORM.groupId || null
+    };
+    
+    try {
+      if (FORM._apiId) {
+        await CredifyAPI.updateForm(FORM._apiId, formData);
+      } else if (FORM.id) {
+        // Check if form exists in API
+        const existing = await CredifyAPI.getForm(FORM.id);
+        if (existing && !existing.error) {
+          FORM._apiId = FORM.id;
+          await CredifyAPI.updateForm(FORM.id, formData);
+        } else {
+          const created = await CredifyAPI.createForm(formData);
+          if (created.form) {
+            FORM._apiId = created.form.id;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to save form to API:', e);
+    }
+  }, 2000); // 2 second debounce
+}
+
 function _credifyInit() {
+// Check if already logged in via API
+if (CredifyAPI.isLoggedIn()) {
+  API_MODE = true;
+  loadDataFromAPI().then(() => {
+    continueInit();
+    updateApiStatus(true);
+  });
+  return;
+}
+
+// Show login modal
+showLoginModal();
+
+// Allow Enter key to submit login
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('login-email').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('login-password').focus();
+});
+}
+
+function continueInit() {
 const stored=loadBlocks();
 BLOCKS = stored || [];
 renderFieldsTab();
@@ -6653,7 +7179,7 @@ if(toOpen){
 }
 applyRoleUI();
 scheduleReflow();
-} // end _credifyInit
+} // end continueInit
 
 // Run immediately if the shim already has data (e.g. standalone / test),
 // otherwise wait for the host to deliver the seed via 'credify:seeded'.
