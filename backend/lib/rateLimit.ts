@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 // Simple in-process sliding-window rate limiter (suitable for single-instance dev/staging).
 // In production behind Cloud Run, replace with a Redis-backed solution.
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Credify-Signature",
+};
+
 interface Window {
   count: number;
   start: number;
@@ -25,7 +31,7 @@ export function rateLimit(maxRequests: number, windowMs: number) {
     if (win.count > maxRequests) {
       return NextResponse.json(
         { error: "Too many requests", code: "RATE_LIMIT" },
-        { status: 429, headers: { "Retry-After": String(Math.ceil((win.start + windowMs - now) / 1000)) } }
+        { status: 429, headers: { ...corsHeaders, "Retry-After": String(Math.ceil((win.start + windowMs - now) / 1000)) } }
       );
     }
 
