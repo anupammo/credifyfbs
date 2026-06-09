@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Credify · Form Builder",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Behavioral health intake form builder with weights, scoring, and skip logic — opens in a new tab.",
   "permissions": ["storage", "windows"],
   "background": {

@@ -6,6 +6,7 @@ RUN npm ci --only=production
 
 # Stage 2 — build
 FROM node:20-alpine AS builder
+RUN apk add --no-cache openssl openssl-dev
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
