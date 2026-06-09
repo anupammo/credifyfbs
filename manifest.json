@@ -4,6 +4,9 @@
   "version": "2.0.0",
   "description": "Behavioral health intake form builder with weights, scoring, and skip logic — opens in a new tab.",
   "permissions": ["storage", "windows"],
+  "host_permissions": [
+    "http://35.255.131.130:3000/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
