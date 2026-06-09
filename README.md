@@ -368,6 +368,165 @@ model AuditLog {
 }
 ```
 
+### PostgreSQL Database Structure
+
+**Connection Details (Production)**
+```
+Host: 35.255.131.130
+Port: 5432 (internal via Docker)
+Database: credify
+User: credify
+```
+
+**Tables Overview**
+
+| Table | Description | Row Count |
+|-------|-------------|-----------|
+| `Organization` | Multi-tenant org/workspace | 1+ |
+| `User` | Team members with roles | 2+ |
+| `RefreshToken` | JWT refresh token hashes | varies |
+| `Form` | Encrypted form definitions | varies |
+| `FormShare` | User-form access grants | varies |
+| `Group` | Form folders/categories | varies |
+| `Block` | Reusable field templates | varies |
+| `AuditLog` | Activity tracking | varies |
+| `_prisma_migrations` | Schema version tracking | 1+ |
+
+**Table Schemas**
+
+```sql
+-- Enums
+CREATE TYPE "Role" AS ENUM ('ADMIN', 'EDITOR', 'VIEWER');
+CREATE TYPE "ShareAccess" AS ENUM ('EDIT', 'VIEW');
+
+-- Organization (multi-tenant root)
+CREATE TABLE "Organization" (
+    "id"        TEXT PRIMARY KEY,      -- cuid
+    "name"      TEXT NOT NULL,
+    "slug"      TEXT NOT NULL UNIQUE,
+    "createdAt" TIMESTAMP(3) DEFAULT now(),
+    "updatedAt" TIMESTAMP(3)
+);
+
+-- User (team members)
+CREATE TABLE "User" (
+    "id"             TEXT PRIMARY KEY,
+    "email"          TEXT NOT NULL UNIQUE,
+    "name"           TEXT NOT NULL,
+    "passwordHash"   TEXT NOT NULL,      -- bcrypt hash
+    "role"           "Role" DEFAULT 'EDITOR',
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id"),
+    "createdAt"      TIMESTAMP(3) DEFAULT now(),
+    "updatedAt"      TIMESTAMP(3),
+    "deletedAt"      TIMESTAMP(3)        -- soft delete
+);
+
+-- RefreshToken (JWT session management)
+CREATE TABLE "RefreshToken" (
+    "id"        TEXT PRIMARY KEY,
+    "tokenHash" TEXT NOT NULL UNIQUE,    -- SHA-256 hash
+    "userId"    TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "revokedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) DEFAULT now()
+);
+
+-- Form (encrypted form definitions)
+CREATE TABLE "Form" (
+    "id"             TEXT PRIMARY KEY,
+    "title"          TEXT NOT NULL,
+    "description"    TEXT,
+    "schemaEnc"      BYTEA NOT NULL,     -- AES-256-GCM encrypted JSON
+    "schemaIv"       TEXT NOT NULL,      -- Initialization vector (hex)
+    "schemaTag"      TEXT NOT NULL,      -- Auth tag (hex)
+    "ownerId"        TEXT NOT NULL REFERENCES "User"("id"),
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id"),
+    "groupId"        TEXT REFERENCES "Group"("id"),
+    "scoringSections" JSONB DEFAULT '[]',
+    "createdAt"      TIMESTAMP(3) DEFAULT now(),
+    "updatedAt"      TIMESTAMP(3),
+    "deletedAt"      TIMESTAMP(3)
+);
+
+-- FormShare (access control)
+CREATE TABLE "FormShare" (
+    "id"     TEXT PRIMARY KEY,
+    "formId" TEXT NOT NULL REFERENCES "Form"("id") ON DELETE CASCADE,
+    "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
+    "access" "ShareAccess" NOT NULL,
+    UNIQUE ("formId", "userId")
+);
+
+-- Group (form folders)
+CREATE TABLE "Group" (
+    "id"             TEXT PRIMARY KEY,
+    "name"           TEXT NOT NULL,
+    "color"          TEXT,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id"),
+    "createdAt"      TIMESTAMP(3) DEFAULT now(),
+    "updatedAt"      TIMESTAMP(3)
+);
+
+-- Block (reusable field templates)
+CREATE TABLE "Block" (
+    "id"             TEXT PRIMARY KEY,
+    "name"           TEXT NOT NULL,
+    "fieldsJson"     JSONB NOT NULL,
+    "organizationId" TEXT NOT NULL REFERENCES "Organization"("id"),
+    "createdAt"      TIMESTAMP(3) DEFAULT now(),
+    "updatedAt"      TIMESTAMP(3)
+);
+
+-- AuditLog (activity tracking)
+CREATE TABLE "AuditLog" (
+    "id"        TEXT PRIMARY KEY,
+    "userId"    TEXT NOT NULL REFERENCES "User"("id"),
+    "action"    TEXT NOT NULL,           -- e.g. "form.create"
+    "entityId"  TEXT,
+    "meta"      JSONB,
+    "formId"    TEXT REFERENCES "Form"("id"),
+    "createdAt" TIMESTAMP(3) DEFAULT now()
+);
+```
+
+**Indexes**
+
+```sql
+CREATE INDEX ON "User"("organizationId");
+CREATE INDEX ON "User"("email");
+CREATE INDEX ON "RefreshToken"("userId");
+CREATE INDEX ON "Form"("organizationId");
+CREATE INDEX ON "Form"("ownerId");
+CREATE INDEX ON "Form"("groupId");
+CREATE INDEX ON "FormShare"("userId");
+CREATE INDEX ON "Group"("organizationId");
+CREATE INDEX ON "Block"("organizationId");
+CREATE INDEX ON "AuditLog"("userId");
+CREATE INDEX ON "AuditLog"("entityId");
+```
+
+**Useful Queries**
+
+```bash
+# Connect via Docker
+docker exec docker-postgres-1 psql -U credify -d credify
+
+# List all tables
+\dt
+
+# View table structure
+\d "User"
+
+# Count rows in all tables
+SELECT schemaname, relname, n_live_tup FROM pg_stat_user_tables;
+
+# View all users
+SELECT id, email, name, role FROM "User";
+
+# View all forms
+SELECT id, title, "ownerId", "createdAt" FROM "Form" WHERE "deletedAt" IS NULL;
+```
+
 ---
 
 ## 7. API Design
