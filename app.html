@@ -338,12 +338,12 @@
   --shadow-sm:0 1px 2px rgba(13,31,24,.05);--shadow-md:0 4px 14px rgba(13,31,24,.08);--shadow-lg:0 16px 48px rgba(13,31,24,.16);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%}
 body{font-family:'Sora',system-ui,sans-serif;color:var(--text-main);background:var(--surface);font-size:14px;line-height:1.5}
 h1,h2,h3{font-family:'Instrument Serif',Georgia,serif;font-weight:400}
 button{font-family:'Sora',sans-serif;cursor:pointer}
 
-.app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+/* .app{display:flex;flex-direction:column;height:100vh;overflow:hidden} */
+.app{display:flex;flex-direction:column;overflow:hidden}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 22px;background:var(--white);border-bottom:1px solid var(--border);flex-shrink:0}
 .brand{display:flex;align-items:center;gap:11px}
 .brand-mark{width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,var(--green-deep),var(--green-primary));display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Instrument Serif',serif;font-size:22px}
@@ -6136,6 +6136,7 @@ function createGroup(name, color){
   const g={id:uid('grp'),name,color:color||GROUP_COLORS[GROUPS.length%GROUP_COLORS.length],ownerId:CURRENT_USER_ID};
   GROUPS.push(g);
   persistGroups();
+  if(API_MODE) syncGroupCreate(g);
   return g;
 }
 
@@ -6149,6 +6150,7 @@ function renameGroup(groupId){
   if(GROUPS.some(x=>x.id!==g.id && x.name.toLowerCase()===trimmed.toLowerCase())){ toast('That name is already in use'); return; }
   g.name=trimmed;
   persistGroups();
+  if(API_MODE) syncGroupRename(g);
   renderFormsListAll();
   toast('Group renamed');
 }
@@ -6170,8 +6172,64 @@ function deleteGroup(groupId){
   persistGroups();
   // If we just deleted the active filter, fall back to "All forms".
   if(FILTER_GROUP_ID===g.id) FILTER_GROUP_ID='all';
+  if(API_MODE) syncGroupDelete(g.id);
   renderFormsListAll();
   toast('Group deleted');
+}
+
+/* ---- Group ↔ API sync ------------------------------------------------------
+   Groups are referenced by forms via a foreign key, so they must live on the
+   server for grouping to survive a re-login. Locally a group starts life with
+   an id like "grp_xxx"; once the server confirms creation we swap that for the
+   real cuid everywhere it's referenced (the GROUPS entry, every form's
+   groupId, the active filter, and the open form) so the FK lines up. The "_"
+   test distinguishes a not-yet-synced local id from a server cuid. */
+function isLocalId(id){ return !id || /_/.test(id); }
+
+async function syncGroupCreate(g){
+  if(!API_MODE || API_LOADING || !g) return;
+  try{
+    const res = await CredifyAPI.createGroup({ name: g.name, color: g.color });
+    if(res && res.group && res.group.id){
+      reconcileGroupId(g.id, res.group.id);
+    } else {
+      console.error('Failed to create group on server:', res && res.error);
+    }
+  }catch(e){ console.error('Failed to create group on server:', e); }
+}
+
+function reconcileGroupId(oldId, newId){
+  if(!oldId || !newId || oldId===newId) return;
+  const g = GROUPS.find(x=>x.id===oldId);
+  if(g) g.id = newId;
+  // Repoint every form that referenced the old local id.
+  const affected = [];
+  FORMS.forEach(f=>{ if(f.groupId===oldId){ f.groupId=newId; affected.push(f); } });
+  if(typeof FORM!=='undefined' && FORM && FORM.groupId===oldId) FORM.groupId=newId;
+  if(FILTER_GROUP_ID===oldId) FILTER_GROUP_ID=newId;
+  persistGroups();
+  persistForms();
+  // Push the corrected groupId to the server for any forms already persisted
+  // there (open form heals via its own debounced save; this covers the rest).
+  affected.forEach(f=>{
+    const apiId = f._apiId || f.id;
+    if(!isLocalId(apiId) && (typeof FORM==='undefined' || !FORM || f.id!==FORM.id)){
+      CredifyAPI.updateForm(apiId, { groupId: newId }).catch(()=>{});
+    }
+  });
+  renderFormsListAll();
+}
+
+async function syncGroupRename(g){
+  if(!API_MODE || !g || isLocalId(g.id)) return;
+  try{ await CredifyAPI.updateGroup(g.id, { name: g.name }); }
+  catch(e){ console.error('Failed to rename group on server:', e); }
+}
+
+async function syncGroupDelete(id){
+  if(!API_MODE || isLocalId(id)) return;
+  try{ await CredifyAPI.deleteGroup(id); }
+  catch(e){ console.error('Failed to delete group on server:', e); }
 }
 
 /* Prompt-driven group creation from the sidebar "+" button. Uses prompt()
@@ -6199,6 +6257,20 @@ function setFormGroup(formId, groupId){
   // copy in sync — otherwise the next render() would resurrect the old value.
   if(FORM.id===f.id){ if(groupId) FORM.groupId=groupId; else delete FORM.groupId; }
   persistForms();
+  // Persist the regrouping to the server. The open form heals through its own
+  // debounced save; other forms get a targeted update. Local-only group ids
+  // (not yet synced) are sent as null and reconciled once the group lands.
+  if(API_MODE){
+    if(FORM.id===f.id){
+      saveFormToAPI();
+    } else {
+      const apiId = f._apiId || f.id;
+      if(!isLocalId(apiId)){
+        const gid = (f.groupId && !isLocalId(f.groupId)) ? f.groupId : null;
+        CredifyAPI.updateForm(apiId, { groupId: gid }).catch(()=>{});
+      }
+    }
+  }
   renderFormsListAll();
 }
 
@@ -6934,17 +7006,30 @@ async function loadDataFromAPI() {
       }
     }
     
-    // Load forms
+    // Load forms. The list endpoint only returns metadata (no schema), so we
+    // fetch each form's full detail to restore its rows/weightGroups. Without
+    // this, reloaded forms would show up empty (no fields/details).
     const formsRes = await CredifyAPI.getForms();
     if (formsRes.forms) {
-      FORMS = formsRes.forms.map(f => ({
+      const details = await Promise.all(
+        formsRes.forms.map(async f => {
+          try {
+            const res = await CredifyAPI.getForm(f.id);
+            return (res && res.form) ? res.form : f;
+          } catch (e) {
+            return f;
+          }
+        })
+      );
+      FORMS = details.map(f => ({
         id: f.id,
+        _apiId: f.id,
         title: f.title,
         desc: f.description || '',
         rows: f.schema?.rows || [],
         weightGroups: f.schema?.weightGroups || [],
         scoringSections: f.scoringSections || [],
-        ownerId: f.ownerId,
+        ownerId: f.ownerId || (f.owner && f.owner.id),
         shares: f.shares || [],
         groupId: f.groupId,
         createdAt: new Date(f.createdAt).getTime(),
@@ -6972,7 +7057,7 @@ async function loadDataFromAPI() {
         name: b.name,
         fields: b.fieldsJson || []
       }));
-      persistBlocks();
+      saveBlocks();
     }
   } catch (e) {
     console.error('Failed to load from API:', e);
@@ -6993,9 +7078,14 @@ async function saveFormToAPI() {
       title: FORM.title || 'Untitled',
       description: FORM.desc || '',
       schema: { rows: FORM.rows, weightGroups: FORM.weightGroups },
-      scoringSections: FORM.scoringSections || [],
-      groupId: FORM.groupId || null
+      scoringSections: FORM.scoringSections || []
     };
+    // Only send groupId when it's a server-side id (cuid). Groups created
+    // locally use ids like "grp_xxx" which aren't persisted server-side and
+    // would fail the backend's cuid/foreign-key validation (HTTP 400).
+    if (FORM.groupId && !/_/.test(FORM.groupId)) {
+      formData.groupId = FORM.groupId;
+    }
     
     try {
       if (FORM._apiId) {

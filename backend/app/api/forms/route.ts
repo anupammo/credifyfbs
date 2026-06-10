@@ -14,7 +14,7 @@ const createSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(1000).optional(),
   schema: z.record(z.unknown()),
-  groupId: z.string().cuid().optional(),
+  groupId: z.string().cuid().nullable().optional(),
   scoringSections: z.array(z.unknown()).default([]),
 });
 
