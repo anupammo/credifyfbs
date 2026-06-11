@@ -1198,6 +1198,14 @@ button{font-family:'Sora',sans-serif;cursor:pointer}
         </div>
         <div class="user-menu" id="user-menu"></div>
       </div>
+      <button class="btn" id="signin-btn" onclick="showLoginModal()" style="display:none" title="Sign in to your account">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Sign in
+      </button>
+      <button class="btn" id="signout-btn" onclick="doLogout()" style="display:none" title="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Sign out
+      </button>
     </div>
   </div>
 
@@ -1360,6 +1368,7 @@ button{font-family:'Sora',sans-serif;cursor:pointer}
       <div class="invite-row">
         <div class="modal-field"><label>Name</label><input type="text" id="invite-name" placeholder="Full name"></div>
         <div class="modal-field"><label>Email</label><input type="text" id="invite-email" placeholder="user@company.com"></div>
+        <div class="modal-field"><label>Temp. password</label><input type="text" id="invite-password" placeholder="Min 8 characters" autocomplete="new-password"></div>
         <div class="modal-field role-pick"><label>Role</label>
           <select id="invite-role">
             <option value="viewer">Viewer</option>
@@ -3914,22 +3923,38 @@ function saveRowAsBlock(ridx){
   openModal('saveblock-modal');
 }
 
-function confirmSaveBlock(){
+async function confirmSaveBlock(){
   const row=FORM.rows[SAVEBLOCK_ROW_IDX];
   const checks=document.querySelectorAll('#saveblock-fields input[type=checkbox]');
   const fields=Array.from(checks).map((c,i)=>c.checked?JSON.parse(JSON.stringify(row.fields[i])):null).filter(Boolean);
   if(fields.length===0){toast('Select at least one field');return;}
   const name=document.getElementById('saveblock-name').value.trim();
   if(!name){toast('Block name required');return;}
-  BLOCKS.push({id:uid('b'),name,fields});
+  const block={id:uid('b'),name,fields};
+  BLOCKS.push(block);
   saveBlocks();renderBlocksTab();closeModal('saveblock-modal');
   SAVEBLOCK_ROW_IDX=null;
   toast('Block saved!');
+  // Persist to the DB so blocks survive a re-login and are shared org-wide.
+  // fieldsJson is wrapped in an object because the backend expects a record.
+  if(API_MODE){
+    try{
+      const res=await CredifyAPI.createBlock({ name, fieldsJson:{ fields } });
+      if(res && res.block && res.block.id){ block.id=res.block.id; saveBlocks(); renderBlocksTab(); }
+      else if(res && res.error){ console.error('Failed to create block on server:', res.error); }
+    }catch(e){ console.error('Failed to create block on server:', e); }
+  }
 }
 
 function deleteBlock(idx){
+  const b=BLOCKS[idx];
   BLOCKS.splice(idx,1);
   saveBlocks();renderBlocksTab();
+  // Only call the API for blocks that actually exist server-side (real cuid,
+  // not a not-yet-synced local id like "b_xxx").
+  if(API_MODE && b && b.id && !/_/.test(b.id)){
+    CredifyAPI.deleteBlock(b.id).catch(e=>console.error('Failed to delete block on server:', e));
+  }
 }
 
 function setLeftTab(tab){
@@ -5902,36 +5927,61 @@ function renderUsersList(){
   mount.innerHTML=html;
 }
 
-function inviteUser(){
+async function inviteUser(){
   const name=document.getElementById('invite-name').value.trim();
   const email=document.getElementById('invite-email').value.trim();
+  const password=document.getElementById('invite-password').value;
   const role=document.getElementById('invite-role').value;
   if(!name){ toast('Name required'); return; }
   if(!email){ toast('Email required'); return; }
   // Prevent adding the same email twice — it's the closest thing we have to a
   // primary identifier across an invite/edit lifecycle.
   if(USERS.some(u=>u.email.toLowerCase()===email.toLowerCase())){ toast('That email is already in use'); return; }
-  USERS.push({id:uid('u'),name,email,role});
+
+  if(API_MODE){
+    // Persist to the backend so the user actually lands in the database and can
+    // own/share forms. The API requires a password of at least 8 characters and
+    // an uppercase role enum (ADMIN/EDITOR/VIEWER).
+    if(!password || password.length<8){ toast('Password must be at least 8 characters'); return; }
+    const res=await CredifyAPI.createUser({ name, email, role:role.toUpperCase(), password });
+    if(res.error){
+      toast(res.code==='EMAIL_CONFLICT'?'That email is already in use':(res.error||'Could not create user'));
+      return;
+    }
+    const u=res.user;
+    // Use the server-issued id so forms owned/shared by this user line up in the DB.
+    USERS.push({id:u.id, name:u.name, email:u.email, role:(u.role||role).toLowerCase()});
+  } else {
+    if(password && password.length<8){ toast('Password must be at least 8 characters'); return; }
+    USERS.push({id:uid('u'),name,email,role});
+  }
   persistUsers();
   renderUsersList();
   renderUserMenu(); // keep switcher menu fresh if it's open later
   document.getElementById('invite-name').value='';
   document.getElementById('invite-email').value='';
+  document.getElementById('invite-password').value='';
   document.getElementById('invite-role').value='editor';
-  toast('User invited');
+  toast(API_MODE?'User added':'User invited');
 }
 
-function changeUserRole(userId,newRole){
+async function changeUserRole(userId,newRole){
   const u=USERS.find(x=>x.id===userId);
   if(!u) return;
   // Don't let an admin demote themselves and lock the team out of admin tools.
   if(u.id===CURRENT_USER_ID && newRole!=='admin'){ toast('You can\'t demote yourself'); renderUsersList(); return; }
+  const prev=u.role;
   u.role=newRole;
   persistUsers();
   renderUsersList();
+  if(API_MODE){
+    // Persist the role change to the DB; roll back the local change if it fails.
+    const res=await CredifyAPI.updateUser(userId,{ role:newRole.toUpperCase() });
+    if(res.error){ u.role=prev; persistUsers(); renderUsersList(); toast(res.error||'Could not update role'); }
+  }
 }
 
-function deleteUser(userId){
+async function deleteUser(userId){
   const u=USERS.find(x=>x.id===userId);
   if(!u) return;
   if(u.id===CURRENT_USER_ID){ toast('You can\'t delete yourself'); return; }
@@ -5939,6 +5989,11 @@ function deleteUser(userId){
   const admins=USERS.filter(x=>x.role==='admin');
   if(u.role==='admin' && admins.length<=1){ toast('Can\'t delete the only admin'); return; }
   if(!confirm('Delete '+u.name+'? Any forms they own will be reassigned to you.')) return;
+  if(API_MODE){
+    // Soft-delete on the server first; bail out if it fails so the UI stays truthful.
+    const res=await CredifyAPI.deleteUser(userId);
+    if(res.error){ toast(res.error||'Could not delete user'); return; }
+  }
   // Hand off ownership of their forms to the current admin, and strip them
   // from share lists everywhere. This keeps form data alive and visible.
   FORMS.forEach(f=>{
@@ -5949,6 +6004,7 @@ function deleteUser(userId){
   USERS=USERS.filter(x=>x.id!==userId);
   persistUsers();
   renderUsersList();
+  renderUserMenu();
   toast('User deleted');
 }
 
@@ -6931,6 +6987,7 @@ async function doLogin() {
     await loadDataFromAPI();
     continueInit();
     updateApiStatus(true);
+    updateAuthUI();
     toast('Signed in as ' + result.user.name);
   } else {
     errorEl.textContent = result.error || 'Login failed';
@@ -6944,6 +7001,7 @@ function loginOffline() {
   API_MODE = false;
   continueInit();
   updateApiStatus(false);
+  updateAuthUI();
   toast('Working offline — changes saved locally');
 }
 
@@ -6952,6 +7010,7 @@ async function doLogout() {
   await CredifyAPI.logout();
   API_MODE = false;
   updateApiStatus(false);
+  updateAuthUI();
   toast('Signed out');
   showLoginModal();
 }
@@ -6972,6 +7031,15 @@ function updateApiStatus(online) {
     el.className = 'api-status offline';
     el.innerHTML = '<span class="api-status-dot"></span> Offline';
   }
+}
+
+// Toggle the header Sign in / Sign out buttons based on whether we're connected
+// to the backend. Signed-in (API_MODE) shows "Sign out"; offline shows "Sign in".
+function updateAuthUI() {
+  const signin = document.getElementById('signin-btn');
+  const signout = document.getElementById('signout-btn');
+  if (signin) signin.style.display = API_MODE ? 'none' : '';
+  if (signout) signout.style.display = API_MODE ? '' : 'none';
 }
 
 // Load data from API
@@ -7015,7 +7083,10 @@ async function loadDataFromAPI() {
         formsRes.forms.map(async f => {
           try {
             const res = await CredifyAPI.getForm(f.id);
-            return (res && res.form) ? res.form : f;
+            // Merge so the list metadata (owner, group) survives — the detail
+            // endpoint returns the decrypted schema but omits ownership, and we
+            // must keep ownerId to relate the form to its DB user.
+            return (res && res.form) ? { ...f, ...res.form } : f;
           } catch (e) {
             return f;
           }
@@ -7028,6 +7099,7 @@ async function loadDataFromAPI() {
         desc: f.description || '',
         rows: f.schema?.rows || [],
         weightGroups: f.schema?.weightGroups || [],
+        style: f.schema?.style || {},
         scoringSections: f.scoringSections || [],
         ownerId: f.ownerId || (f.owner && f.owner.id),
         shares: f.shares || [],
@@ -7055,7 +7127,9 @@ async function loadDataFromAPI() {
       BLOCKS = blocksRes.blocks.map(b => ({
         id: b.id,
         name: b.name,
-        fields: b.fieldsJson || []
+        // fieldsJson is stored wrapped ({ fields: [...] }); tolerate a bare
+        // array too for any rows written by an older client.
+        fields: Array.isArray(b.fieldsJson) ? b.fieldsJson : ((b.fieldsJson && b.fieldsJson.fields) || [])
       }));
       saveBlocks();
     }
@@ -7077,7 +7151,7 @@ async function saveFormToAPI() {
     const formData = {
       title: FORM.title || 'Untitled',
       description: FORM.desc || '',
-      schema: { rows: FORM.rows, weightGroups: FORM.weightGroups },
+      schema: { rows: FORM.rows, weightGroups: FORM.weightGroups, style: FORM.style || {} },
       scoringSections: FORM.scoringSections || []
     };
     // Only send groupId when it's a server-side id (cuid). Groups created
@@ -7116,6 +7190,7 @@ if (CredifyAPI.isLoggedIn()) {
   loadDataFromAPI().then(() => {
     continueInit();
     updateApiStatus(true);
+    updateAuthUI();
   });
   return;
 }
@@ -7152,6 +7227,7 @@ try{
 }catch(e){}
 if(!CURRENT_USER_ID) CURRENT_USER_ID=USERS[0].id;
 renderUserChip();
+updateAuthUI();
 
 // Load the forms collection
 FORMS = loadForms() || [];

@@ -45,6 +45,7 @@ export const GET = withAuth(async (req: AuthedRequest, { params }: Ctx) => {
       title: form.title,
       description: form.description,
       groupId: form.groupId,
+      ownerId: form.ownerId,
       scoringSections: form.scoringSections,
       schema: JSON.parse(schema),
       createdAt: form.createdAt,
