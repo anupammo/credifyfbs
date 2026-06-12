@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: credify
       POSTGRES_PASSWORD: dev_password
     ports:
-      - '5432:5432'
+      - '5432:5434'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
