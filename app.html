@@ -1183,6 +1183,8 @@ button{font-family:'Sora',sans-serif;cursor:pointer}
         </button>
         <div class="export-menu" id="export-menu">
           <button onclick="exportAs('pdf')"><span>PDF</span><span class="em-tag">default</span></button>
+          <!-- <button onclick="exportAs('link')"><span>Link</span></button> -->
+          <!-- <button onclick="exportAs('jpg')"><span>QR Code</span></button> -->
           <button onclick="exportAs('json')"><span>JSON</span></button>
           <button onclick="exportAs('html')"><span>HTML</span></button>
         </div>
@@ -1255,7 +1257,7 @@ button{font-family:'Sora',sans-serif;cursor:pointer}
         <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password">
       </div>
       <div class="login-hint">
-        <span style="color:var(--text-muted);font-size:12px">Default: admin@credify.internal / admin1234!</span>
+        <span style="color:var(--text-muted);font-size:12px">Default: <code style="color:var(--problem)">admin@credify.internal</code> / <code style="color:var(--problem)">admin1234!</code></span>
       </div>
     </div>
     <div class="modal-foot">
