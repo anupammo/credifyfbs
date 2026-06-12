@@ -5,6 +5,7 @@
   "description": "Behavioral health intake form builder with weights, scoring, and skip logic — opens in a new tab.",
   "permissions": ["storage", "windows"],
   "host_permissions": [
+    "https://chrome.credifyfast.com/*",
     "http://35.255.131.130:3000/*"
   ],
   "background": {
@@ -15,7 +16,7 @@
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'",
-    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals allow-popups-to-escape-sandbox allow-downloads; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' http://35.255.131.130:3000 http://localhost:3000"
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals allow-popups-to-escape-sandbox allow-downloads; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://chrome.credifyfast.com http://35.255.131.130:3000 http://localhost:3000"
   },
   "icons": {
     "16": "icons/icon-16.png",
