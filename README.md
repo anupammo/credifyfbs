@@ -256,6 +256,100 @@ credifyfbs/
 
 ### Entity Relationship Overview
 
+> Generated from [`backend/prisma/schema.prisma`](backend/prisma/schema.prisma) — GitHub renders the Mermaid diagram below automatically. Multi-tenant: every table is scoped by `organizationId`.
+
+```mermaid
+erDiagram
+    Organization ||--o{ User         : "has"
+    Organization ||--o{ Form         : "has"
+    Organization ||--o{ Group        : "has"
+    Organization ||--o{ Block        : "has"
+    User         ||--o{ Form         : "owns (ownerId)"
+    User         ||--o{ FormShare    : "granted"
+    User         ||--o{ RefreshToken : "issued"
+    User         ||--o{ AuditLog     : "performs"
+    Group        |o--o{ Form         : "groups"
+    Form         ||--o{ FormShare    : "shared via"
+    Form         |o--o{ AuditLog     : "references"
+
+    Organization {
+        string   id PK
+        string   name
+        string   slug UK
+        datetime createdAt
+        datetime updatedAt
+    }
+    User {
+        string   id PK
+        string   email UK
+        string   name
+        string   passwordHash
+        enum     role "ADMIN|EDITOR|VIEWER"
+        string   organizationId FK
+        datetime createdAt
+        datetime updatedAt
+        datetime deletedAt "nullable (soft delete)"
+    }
+    RefreshToken {
+        string   id PK
+        string   tokenHash UK
+        string   userId FK
+        datetime expiresAt
+        datetime revokedAt "nullable"
+        datetime createdAt
+    }
+    Form {
+        string   id PK
+        string   title
+        string   description "nullable"
+        bytes    schemaEnc "AES-256-GCM JSON"
+        string   schemaIv
+        string   schemaTag
+        string   ownerId FK
+        string   organizationId FK
+        string   groupId FK "nullable"
+        json     scoringSections
+        datetime createdAt
+        datetime updatedAt
+        datetime deletedAt "nullable (soft delete)"
+    }
+    FormShare {
+        string id PK
+        string formId FK
+        string userId FK
+        enum   access "EDIT|VIEW"
+    }
+    Group {
+        string   id PK
+        string   name
+        string   color "nullable"
+        string   organizationId FK
+        datetime createdAt
+        datetime updatedAt
+    }
+    Block {
+        string   id PK
+        string   name
+        json     fieldsJson
+        string   organizationId FK
+        datetime createdAt
+        datetime updatedAt
+    }
+    AuditLog {
+        string   id PK
+        string   userId FK
+        string   action
+        string   entityId "nullable"
+        json     meta "nullable"
+        string   formId FK "nullable"
+        datetime createdAt
+    }
+```
+
+**Notes:** `User`↔`Form` is many-to-many resolved through `FormShare` (`@@unique([formId, userId])`). `Form.schemaEnc` holds the AES-256-GCM-encrypted builder JSON (`rows` / `weightGroups` / `style`); `scoringSections`, `Block.fieldsJson`, and `AuditLog.meta` are plaintext `jsonb`. `RefreshToken` and `FormShare` cascade-delete with their parents.
+
+A plain-text view of the same relationships:
+
 ```
 organizations ──< users ──< forms ──< form_shares
                                  └──< scoring_sections
