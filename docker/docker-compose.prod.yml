@@ -43,18 +43,10 @@ services:
       postgres:
         condition: service_healthy
 
-  # TLS reverse proxy — terminates HTTPS with the wildcard cert and forwards
-  # to the backend over the internal network.
-  nginx:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    ports:
-      - '443:443'
-    volumes:
-      - ./nginx/chrome.conf:/etc/nginx/conf.d/default.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      - backend
+# NOTE: TLS is terminated by the HOST nginx (which already owns :443 and holds
+# the certbot wildcard cert), not by a container — see docker/nginx/chrome.conf
+# for the server block to install on the host. The backend stays published on
+# 3000 so the host nginx can proxy to 127.0.0.1:3000.
 
 volumes:
   pgdata_prod:
