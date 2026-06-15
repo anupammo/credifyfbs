@@ -2,7 +2,7 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Version](https://img.shields.io/badge/Extension-v1.2.0-green)](./manifest.json)
+[![Version](https://img.shields.io/badge/Extension-v3.0.0-green)](./manifest.json)
 [![Backend](https://img.shields.io/badge/Backend-Next.js_16-black)](./backend)
 [![DB](https://img.shields.io/badge/Database-PostgreSQL_16-blue)](./backend/prisma)
 [![Deploy](https://img.shields.io/badge/Deploy-GCP_Cloud_Run-orange)](./infra)
@@ -105,7 +105,7 @@ app.html  (sandboxed) ── localStorage shim
 │                                                                 │
 │   ┌──────────────────────┐     ┌────────────────────────────┐  │
 │   │   Chrome Extension   │     │    Cloud Run Service       │  │
-│   │   (MV3 · v1.2)       │────▶│    Next.js 16 App Router   │  │
+│   │   (MV3 · v3.0)       │────▶│    Next.js 16 App Router   │  │
 │   │                      │HTTPS│    (API Routes only)       │  │
 │   │  background.js       │     │                            │  │
 │   │  └─ ApiClient        │     │  /api/auth/**              │  │
@@ -1158,6 +1158,16 @@ hmac-secret       → HMAC_SECRET
 - [x] Docker Compose `version` field removed (Compose v2 spec)
 - [x] `package-lock.json` synced — `@types/uuid` upgraded to v11
 - [x] Full codebase verified and ready to deploy on GCP Cloud Run
+- [ ] Extension ApiClient + hybrid online/offline mode
+- [ ] GCP infrastructure provisioning (Terraform)
+- [ ] Real-time form share notifications (Server-Sent Events)
+- [ ] Full audit log UI in extension
+- [ ] Form version history (snapshot on every save)
+- [ ] Email invitations for new users
+
+### v3.0 — Current (2026-06-16)
+
+- [x] Version bump to 3.0.0
 - [ ] Extension ApiClient + hybrid online/offline mode
 - [ ] GCP infrastructure provisioning (Terraform)
 - [ ] Real-time form share notifications (Server-Sent Events)
