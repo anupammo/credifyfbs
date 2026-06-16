@@ -1,0 +1,993 @@
+
+<!DOCTYPE html>
+<!-- ============================================================
+     FILE LINEAGE  —  do not edit two copies of this file in parallel
+     ============================================================
+     FILE:        FORM_BUILDER_06-10-26_02-09PM-PDT_buttons-right-and-autopop-bench_SUPPORT.html
+     BUILT FROM:  FORM_BUILDER_06-10-26_01-55PM-PDT_scoring-crossform-copy-and-polish_SUPPORT.html
+     ACCOUNT:     Claude.ai — SUPPORT line
+     DATE:        2026-06-10 14:09 PDT
+     MERGED:      no            (single-parent edit off the 01:55 build)
+     ------------------------------------------------------------
+     CHANGELOG (newest first):
+       2026-06-10  Form buttons right-aligned + Autopopulation Test Bench:
+                   - BUTTONS RIGHT: every form's action buttons now sit on the
+                     RIGHT edge, never the left — preview single-page Submit
+                     (.pf-submit), preview multi-page Back/Next-or-Submit
+                     (.pf-page-nav), exported single-page Submit (.form-submit),
+                     and the exported wizard's Back/Next/Submit (.page-nav).
+                     CSS-only (flex + justify-content:flex-end); markup, handlers
+                     and disabled states untouched.
+                   - AUTOPOP TEST BENCH: new "Test bench" button in the
+                     Autopopulation manager footer (downloadAutopopBench) exports
+                     Autopop_TestBench_SUPPORT.html — two exported forms side by
+                     side in same-origin iframes sharing the REAL prefill store
+                     (credify_prefill_v1), with: form pickers (up to 8 forms that
+                     have keyed fields; defaults to the pair sharing the most
+                     keys), a shared-keys ribbon (warns when the pair shares
+                     none), a live key→value store inspector, a timestamped
+                     change log, Clear shared answers + Reload, and a "Live push"
+                     toggle that pushes each store change into both open panes
+                     via the export runtime's CredifyPrefill() hook — so typing
+                     in the parent visibly fills the child without a reload.
+                     Untoggled = production behavior (child prefills on load).
+                     Watcher = storage events + 600ms poll fallback (file://).
+                     New: autopopBenchCandidates / buildAutopopBench /
+                     downloadAutopopBench. Engine verified end-to-end (jsdom):
+                     parent change → profile write → child preview prefill all
+                     work; the bench adds the missing visibility.
+                   - Export filename suffix corrected to this account's standing
+                     rule: _JAYGMAIL → _SUPPORT in exportFilename and the
+                     cross-form bench filename (merge inheritance from the JAY
+                     line).
+       2026-06-10  Scoring search goes cross-form + add/search polish:
+                   - CROSS-FORM SEARCH: "Find a group" now also matches scoring
+                     groups on every OTHER form, listed under a "From other forms"
+                     divider (group name · form name · field/band counts) with a
+                     "Copy into this form" button. Copy deep-clones the group onto
+                     the current form under a fresh id — bands, weights, caps,
+                     scoreKey, scoreConds and notifications included; fieldIds kept
+                     verbatim (the pipeline already resolves them cross-form via
+                     findFieldAnyForm) and the copy's Form picker is pointed at the
+                     source form (SCORING_FORM[newId]). Search stays active after a
+                     copy so several groups can be pulled in a row. The zero-groups
+                     teaching state no longer short-circuits while a query is typed,
+                     so cross-form results render even on a form with no groups yet.
+                     New: scoringCrossFormMatches / copyScoringSectionInto +
+                     .scoring-xform-* styles. No-match copy now distinguishes "none
+                     on this form (see below)" from "none anywhere".
+                   - BUG: adding a group while a search was active rendered it
+                     nowhere (the suggested name didn't match the filter) and the
+                     focus scroll found nothing — the button looked dead.
+                     createScoringSection now clears the search first via a shared
+                     resetScoringSearch() (also used by openScoringModal and the
+                     Find toggle).
+                   - "Add multiple" count box: the 2–20 clamp is written back into
+                     the input so it never lies, and Enter in the box now submits.
+                   - Suggested names number from the highest existing "Scoring
+                     group N" instead of array length, so deleting groups can't
+                     make the next suggestion duplicate a survivor's name.
+                   - Lineage header housekeeping: merged the two "CHANGELOG
+                     (newest first):" header lines the 12:06 build introduced.
+       2026-06-10  Scoring modal — add single/multiple + move search behind a button:
+                   - Add controls in the footer: "+ New scoring group" (single) plus an
+                     "or add [N] + Add multiple" control (2–20). createScoringSection now
+                     takes a count; after creating, it scrolls the first new group into
+                     view and focuses its name field (scoringFocusGroup) so you don't get
+                     lost when adding several. Each group block carries data-section-id.
+                   - Removed the always-on search bar from the modal body. It now lives in
+                     a collapsible panel revealed by a new "Find a group" button up top
+                     (toggleScoringSearch), next to Expand. Opening the modal resets the
+                     search (panel hidden, query cleared) so the list is never secretly
+                     filtered. NOTE: the search still filters THIS form's groups by name
+                     (cross-form browsing not yet built).
+       2026-06-10  Scoring form picker searchable + bug fixes:
+                   - Scoring Groups "Form" picker is now a searchable CUSTOM dropdown
+                     (enhance-dd): desktop gets the styled dropdown with a type-to-search
+                     box (auto-appears past 8 forms); touch stays native. Was a plain
+                     native <select> (enhance-dd-skip). Pinned .cdd to flex:1 so it fills
+                     the row like the old select did.
+                   - BUG: the scoring-group search placeholder rendered a literal "\u2026"
+                     (the escape sat in a static HTML attribute, not a JS template). Now a
+                     real ellipsis. (The two other \u2026/\u2014 in scoring render fine —
+                     they live in JS template literals.)
+                   - BUG (pre-existing, Show Fields + scoring conditions): changing a
+                     condition's target field/score in dispSetCondField rebuilt the
+                     condition object and silently dropped its conj/neg, resetting an
+                     OR/NOT row back to AND. Now preserves the AND/OR/NOT join on retarget.
+       2026-06-10  Conditional scoring + edit-from-autopop-report:
+                   - CONDITIONAL SCORING: each field in a scoring group can now carry an
+                     "+ Condition" gate (stored at group.scoreConds[fieldId]) — the SAME
+                     stackable AND/OR/NOT builder Show Fields uses (target a field's answer
+                     or a section score). When the stack is met the field contributes its
+                     %/points; otherwise 0. Reuses the dispfields editor via a new "scfield"
+                     scope + DISP_SCORE_MODE (renderScoreCondEditor/dispScoreCondHTML);
+                     opens from the scoring field row, returns there on Save/Clear.
+                     Gated in the builder preview (sectionTotal + updatePreviewScores via
+                     scoringFieldCounts/evalShowIf) AND in the EXPORTED runtime (per-field
+                     conds serialized into the section blob; sectionScore gates via evalCond;
+                     condition controllers added to ctrlTypes). Re-entry guard on both
+                     sectionTotal/sectionScore so a self-referential score gate can't recurse.
+                   - AUTOPOP REPORT EDITING: the "All autopopulated fields" report rows are
+                     now editable in place — non-parent rows get a Two-Way/Overwrite toggle,
+                     every editable row gets an Unlink (autopopAllSetDir reuses autopopApplyDir;
+                     autopopAllUnlink clears dataKey). Respects per-form edit access. No more
+                     digging into each form's Autopopulation manager.
+       2026-06-10  Show Fields manager: notifications bell + recipients popover:
+                   - Each rule row in the Show Fields manager now shows a bell icon
+                     ONLY when that rule has notifications configured (cond.notify has a
+                     channel or recipient). Clicking it opens a popover anchored to the
+                     bell listing Methods (SMS / Email) and Recipients (Patient, roles,
+                     users, contacts) via recipientChips. Closes on outside click, Esc,
+                     or scroll. New #notify-pop element + dispRuleNotify / dispNotifyMethods
+                     / dispNotifyPopHTML / dispToggleNotifyPop / dispCloseNotifyPop.
+                   - Notify is read live from the rule's showIf block by scope, so it
+                     reflects the saved rule (set it in a rule's Notifications section →
+                     Save & Close → the bell appears on that row).
+       2026-06-10  Rule editor: 2-col on expand + AND/OR/NOT in one dropdown:
+                   - Expanded Show Fields rule editor now tiles the "Show these fields"
+                     candidate list AND the "Open a form when met" list into two columns
+                     (collapses to one column under 920px) so long forms stop forcing a
+                     scroll marathon. Mirrors the scoring modal's expanded layout.
+                   - AND/OR/NOT folded into a single dropdown per condition (the separate
+                     NOT toggle button is gone). "NOT" = "AND NOT" (joins with AND and
+                     negates the condition). Model unchanged: still stored as conj
+                     ('and'|'or') + neg (bool); new dispSetLogic sets both. Evaluator and
+                     rule summaries untouched. Help copy updated to "AND / OR / NOT".
+                   - Scope note: this AND/OR/NOT builder only exists in Show Fields.
+                     Scoring has no condition system in this build, and the form-level
+                     rule modal (now unsurfaced) uses a different match-ALL/ANY model.
+       2026-06-10  Show Fields manager: drop form-level rule + relabel open:
+                   - Removed the "Add display rule" pill from the Show Fields manager
+                     header (both Fields and Show Fields tabs). Visibility is managed
+                     per-field via "Set rule"; the whole-form display rule is no longer
+                     surfaced. formRulePillHTML/openFormRules remain defined but unused.
+                   - "Open a form when met" is unchanged and stays at the field level
+                     (per-field rule editor) — only its per-form action label changed
+                     from "open ▸" to "+ add", matching the condition-field "+ add" rows.
+       2026-06-10  Show Fields Test Form layout + autopop report stacking:
+                   - Show Fields Test Form: the 10 controller->dependent pairs now lay
+                     out 4 fields across (span 3) per row, in chronological order
+                     (c1,d1,c2,d2 … c10,d10). Heading + intro paragraph stay full-width.
+                   - REVERSED the prior clean-slate strip: the configured Show Fields
+                     rules are RESTORED (each dependent reveals on its controller's
+                     condition) -- "configured Show Fields" presupposes rules. Say the
+                     word if you actually want it shipped rule-free instead.
+                   - "All autopopulated fields" report (#autopop-all-modal) was opening
+                     BEHIND the Autopopulation manager modal (both z-index 100, report
+                     earlier in DOM). Added #autopop-all-modal{z-index:120} so it opens
+                     in front. SEED_VER 5 -> 6 so stale copies rebuild with the new layout.
+       2026-06-10  Popup dim + Show Fields footer trim + clean-slate seed:
+                   - Every popup now grays out the builder consistently: the global
+                     .modal-overlay backdrop went rgba(13,31,24,.4) -> .55 with a 1.5px
+                     backdrop blur, so all 22 dialogs (incl. Show Fields) dim like the
+                     Autopopulation modal did. Single source of truth; nothing per-modal.
+                   - Show Fields footer: removed the "+ Add 5 sample forms" and
+                     "Export cross-form test bench" buttons. "Clear all rules" + "Done"
+                     remain. seedRichSampleForms/downloadCrossFormBench fns left intact
+                     (the former still seeds at boot); only the buttons are gone.
+                   - Clean slate for testing: the default "Show Fields Test Form" now
+                     seeds with every field/pair but ZERO rules (all showIf stripped pre-
+                     persist). SEED_VER 4 -> 5 so any stale v4 copy rebuilds rule-free.
+       2026-06-10  All autopopulated fields: bigger + searchable:
+                   - Enlarged the report modal (max-width 760 -> 1040px, max-height
+                     88 -> 92vh, taller body) since the list can get long.
+                   - Added a search bar (#autopop-all-search -> autopopAllSearch) that
+                     filters the configured-autopopulation groups by field name OR form
+                     name (also matches the shared key). Live filtering, clear button,
+                     "no match" empty state, resets on open. AUTOPOP_ALL_SEARCH state.
+       2026-06-10  Admin "All autopopulated fields" report:
+                   - New admin-only button in the Autopopulation overview footer
+                     (#autopop-all-btn -> openAutopopAllReport; hidden for non-admins
+                     via isAdmin()). Opens a global at-a-glance report across EVERY form.
+                   - Report (#autopop-all-modal) groups all fields sharing a dataKey.
+                     Each row reads "Form Name > Field". The parent (source) is flagged
+                     with a Parent badge -- identified by the field whose label slug
+                     generated the key (slugifyKey), with fallbacks. Every field also
+                     shows Two-Way (synced) or Overwrite (receive-only, prefillOverwrite).
+                     New: autopopAllGroups / autopopRenderAllReport / openAutopopAllReport.
+       2026-06-10  Show Fields manager: search + ink color:
+                   - Search box pinned to the top of the Show Fields modal
+                     (#dispmgr-search -> dispMgrSearch). Filters the Fields list
+                     AND the Show Fields rules list live by field name (rules also
+                     match on their condition text); focus is preserved per keystroke,
+                     clear button + "no match" empty states. Resets on open.
+                   - Recolored rendered/preview/exported form text from pure black
+                     (#000) to the brand ink #0d1f18 -- the same color the "Show Fields"
+                     title uses: form h1, field labels, option-field labels, score-card
+                     names, and section <h2> headings. The color-picker's Black swatch
+                     (#000000) and the hex placeholder are deliberately untouched.
+       2026-06-10  Autopopulation surfaced to the toolbar (at-a-glance overview):
+                   - New "Autopopulation" toolbar button immediately LEFT of "Show Fields"
+                     (#autopop-btn -> openAutopopManager). The engine already existed but was
+                     only reachable from inside a single field's settings; now it has a home.
+                   - Form-level overview modal (#autopop-manager-modal): lists every fillable
+                     field on the current form and, for each, shows where its answer carries
+                     over on other forms as "Form . Field" chips + a "-> N fields . M forms"
+                     badge; unlinked fields read "Not linked yet". Searchable.
+                   - Click any field to drop into the existing per-field picker
+                     (openAutopopModal); the overview re-renders live as links change
+                     (hook in autopopRenderAll). New: autopopLinkTargets / autopopRenderManager
+                     / autopopMgrSearch / autopopManagerOpenField.
+       2026-06-10  Field-level conditions redesign (Show Fields + score conditions):
+                   - Stacked multi-conditions: "+ Add condition" piles on as many as you
+                     want (20+) on one field; each extra row carries its own AND / OR
+                     connector (dispSetConj) instead of one global Match ALL / ANY.
+                   - Negative conditions: per-condition NOT toggle (dispToggleNeg), e.g.
+                     "is between 10-20  AND  NOT (Field X = 50)". Works on field & score rows.
+                   - A condition can target a field OR a score section (Scores optgroup in
+                     the picker), so score-based AND/OR + negation come for free.
+                   - Evaluators rewritten to a left-to-right fold honouring per-condition
+                     conj + neg (builder evalShowIf + export evalCond), with back-compat
+                     fallback to match=all/any for older rules; describeShowIf updated.
+                   - Sample data: seedRichSampleForms now also seeds "Sample - All Field
+                     Types (Show Fields test)" (one of every applicable type, real names)
+                     and "Sample - Depression Screener (PHQ-9)" (9 scored items + PHQ-9
+                     total section + a score-driven clinician-note condition).
+                   - Grouping deferred to the next pass (per request).
+       2026-06-10  Show Fields + Scoring notifications pass:
+                   - Removed the "Other conditions" block from Show Fields (redesigned out).
+                   - Added a "Notifications" section at the bottom of Show Fields: notify
+                     roles / users / contacts (+ SMS / Email / patient) when the rule fires.
+                     Stored on the rule block (block.notify), loaded on open, committed in
+                     persistDispBlock; recipient picker via openRecipientPicker (contacts on).
+                   - Renamed Scoring "alerts" -> "notifications" (Critical-item notifications,
+                     Risk notification, Notification message placeholders).
+                   - Font consistency: notify heading + notify badge + self-tag blue
+                     (#1d4ed8 / #eef4ff) -> brand green tokens.
+       2026-06-10  Form-level "When to show this form": replaced the six symbol
+                   operators (=, ≠, >, <, ≥, ≤) with the full WRITTEN set — is /
+                   is not / contains / does not contain / greater than / at least /
+                   less than / at most / is between / is not between / is filled in /
+                   has no answer — matching the field-level Show Fields vocabulary.
+                   Value handling added: no-value ops show no input; range ops show
+                   from/to (value2). Shared formRuleCondSchema() so the modal preview
+                   and buildSchema() emit identical backend JSON (incl. value2).
+                   Field-level Show Fields already supports unlimited conditions +
+                   AND/OR (Match ALL/ANY); scoring has no condition system in this build.
+       2026-06-09  Bug-check pass on this build. Hardened the new Back/Forward
+                   page-nav: bake the literal target page number into the
+                   onclick (gotoBuilderPage(N)) instead of referencing the
+                   module-scoped BUILDER_PAGE from an inline handler — matches
+                   the existing page-tab pattern and avoids any inline-scope
+                   lookup risk. Verified end-to-end (jsdom): cross-form rule
+                   round-trips through render/prune/persist; Back/Forward
+                   navigate a real 2-page form and clamp at the ends; empty
+                   abandoned pages still prune via normalizePages as before;
+                   Block drop distributes the row evenly ([4,4,4]/[6,6]);
+                   _JAYGMAIL export suffix; no JS errors. Battery 64 green.
+       2026-06-09  Row/Page visibility modal renamed "Show Forms". Added a
+                   cross-form condition picker to it: "Branch on another form"
+                   searches every OTHER form's controller fields and, on pick,
+                   writes a cross-form field condition (the existing
+                   evalCrossForm / xBridge runtime evaluates it) — operators
+                   render per field type. Cross-form refs now resolve in the
+                   editor (vizEditorHTML) and in describeShowIf badges.
+                   Canvas save bar gained Back / Forward page-nav buttons
+                   (3 buttons: Back · Forward · Save), disabled at the ends,
+                   wired to gotoBuilderPage. Draft status reworded to make the
+                   local auto-save explicit ("auto-saved locally · not in the
+                   database yet"); only Save still pushes to the DB. Dropping
+                   fields from a Block now auto-sizes the row (fitRowAroundDrop)
+                   so block fields share the row like a dropped new field.
+                   In-app export filenames gain a _JAYGMAIL suffix (form export
+                   + cross-form test bench). Battery 63 green.
+       2026-06-09  Toolbar Save removed (save lives only on the form via
+                   the canvas save bar). Manage Users & Contact Directory
+                   widened to 960px. Full profile fields added to both
+                   (where applicable): First/Last/Preferred name, Title,
+                   Phone, Mobile, Company, Time zone (IANA), Language;
+                   Users also get Active (can log in), Division, Employee
+                   number, Cost center; Contacts keep DOB/MRN/Receives-via.
+                   Invite & add-contact rows expanded to first/last + mobile.
+                   Battery 62 green.
+       2026-06-09  Audit of share/contacts/2-col scoring/undo features:
+                   removed a duplicate roleLabel() definition (identical
+                   body). Verified role-share access, blank-desc migration
+                   safety, CONTACTS=label-only rename. Added role_share_access
+                   guard. Battery 60 green.
+       2026-06-09  Verified undo/redo end-to-end (buttons + Cmd/Ctrl+Z;
+                   existing form, blank form, field add, redo, DOM
+                   sync) — working; the dead undo was in the 02:11PM
+                   build, fixed by 02:45PM. No code change; added a
+                   10-check undo_redo guard. Battery 59 green.
+       2026-06-09  Share rework: toolbar Share removed; Share now on the
+                   form head + every Forms-list/search row; Share window
+                   880px with Users / Roles / Contacts tabs (roles & users
+                   = access + queued dashboard notifications, contacts =
+                   delivery via their configuration / email / SMS, never
+                   builder access); role shares enforced in getAccess;
+                   share notifications queued to localStorage for the
+                   dashboard/CRM. Clients renamed CONTACTS across all UI;
+                   Contact Directory gains per-contact Receives-via config.
+                   Export button icon-only. Form display-rule pill moved
+                   off the form head into Show Fields. 48/48 + 25/25 green.
+       2026-06-09  Undo/Redo moved from the topbar onto the form
+                   (left edge of the form-head tools row). All seeded /
+                   demo forms now ship with a BLANK description (13 descs
+                   blanked + bench SEED_VER 3→4 + one-time localStorage
+                   migration that never touches user-typed descs). Scoring
+                   window: Expand now tiles "Fields in this section" and
+                   the add-field results into two columns (single column
+                   <920px) and widens 1180→1320px. Exports from this
+                   account end in _SUPPORT. 29/29 smoke checks green.
+       2026-06-09  Lineage header normalized on intake: FILE corrected
+                   (was stamped _NOT MERGED but is the merged canonical),
+                   ACCOUNT/DATE updated, standing export rule active here.
+       2026-06-08  MERGED expanded Reports filters onto canonical: full
+                   type-aware operator sets (doesn’t-contain / starts- /
+                   ends-with, not-between, is/none-of, includes any/all,
+                   on-or-before/after, is-empty/not-empty) + operator &
+                   value dropdowns custom on desktop, native on mobile. 23/23.
+       2026-06-08  Bug fix (Reports date filters): "between" now
+                   string-compares ISO dates (was Number()→NaN, so it
+                   never matched); "before"/"after" no longer match
+                   blank/unanswered responses. Found line-by-line; 8/8 green.
+       2026-06-08  Line-by-line audit: report table now honors custom
+                   band colors (was severity-only). No other defects found.
+       2026-06-08  User profiles: full contact details (email, mobile/SMS,
+                   office phone, title) + per-user Notification Methods
+                   (SMS/Email/AI); scoring field-row remove X modernized. 58 green.
+       2026-06-08  Scoring: "Questions" → "Fields"; per-band custom
+                   color picker (preview + export honor it); recipient
+                   picker layers above the Scoring modal. 57 suites green.
+       2026-06-08  MERGED new "Scale" field type (PHQ-9 matrix grid,
+                   questions x up to 5 answers, optional per-answer
+                   mood-face images) from the scale-field-images branch
+                   onto canonical. 56 suites green.
+       2026-06-08  Added this FILE LINEAGE header block; standing rule
+                   to carry + update it on every export.
+       2026-06-08  Rule stripes -> green when configured, none if not.
+                   Radio/select conditions gained label-text operators
+                   (is / is not / contains / does not contain). 55 suites green.
+       2026-06-08  "Clear all rules" button in Show Fields.
+       2026-06-08  Scoring button moved onto the form-head.
+       2026-06-08  MERGED scoring %/numeric (per-field weights + group
+                   cap) from a parallel account onto canonical.
+       2026-06-08  Case-insensitive "is"/"is not"; visible build stamp.
+       2026-06-08  Progress Bar rework: no auto bar; calc modes
+                   (above / all pages / per page); placement radios.
+     ------------------------------------------------------------
+     PARENTS (only if MERGED = yes):
+       A: FORM_BUILDER_06-08-26_05-24PM-PDT_reports-date-filter-fix_NOT MERGED.html  (canonical line)
+       B: FORM_BUILDER_06-08-26_02-08PM-PDT_reports-all-operators-mobile-dd_NOT MERGED.html  (feature source)
+     ============================================================ -->
+<html lang="en">
+<head>
+<!-- Credify runtime layer: detects extension vs hosted-web context, installs the
+     MV3 localStorage shim + seed handshake when sandboxed, and exposes the unified
+     CredifyNet transport + CredifyAPI auth. MUST be the first script on the page. -->
+<script>
+// @include js/runtime.js
+</script>
+<!-- Credify cloud bridge (pre-seed): WEB runtime only — pull this account's forms
+     from the server into localStorage BEFORE the builder boots, so the builder's
+     normal load path picks them up. Synchronous on purpose — it's a one-shot boot
+     step that must finish before the builder script runs. (No-op in the extension.) -->
+<script>
+// @include js/preboot.js
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a3d2b">
+<title>Credify · Form Builder (with Weights)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* @include styles/app.css */
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">C</div>
+      <div class="brand-name">Form Builder<span class="sub">Credify · With Weights · <span id="build-stamp" title="Loaded build — confirm you're on the latest export">build —</span></span></div>
+      <div class="seg" id="mode-seg" style="margin-left:14px">
+        <button class="active" data-mode="build" onclick="setMode('build')">Build</button>
+        <button data-mode="preview" onclick="setMode('preview')">Preview</button>
+      </div>
+      <div class="tb-tools" id="tb-tools" style="margin-left:10px">
+      <button class="btn build-only" id="forms-btn" onclick="openForms()" title="Browse your forms or insert a validated System Form (PHQ-9, GAD-7, PCL-5, AUDIT, DAST-10, C-SSRS)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Forms
+      </button>
+      <button class="btn build-only" id="new-btn" onclick="newForm()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New
+      </button>
+      <button class="btn build-only" id="reports-btn" onclick="openReportsModal()" title="Build reports from submitted form data — filter, group, chart, and tabulate responses">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></svg>
+        Reports
+      </button>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <div class="tb-more-wrap">
+        <button class="btn icon-only tb-more" id="tb-more" title="More options" onclick="toggleToolbarOverflow(event)" hidden>
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+        </button>
+        <div class="tb-more-menu" id="tb-more-menu"></div>
+      </div>
+      <div class="export-dd" id="export-dd">
+        <button class="btn export-main icon-only" id="export-main-btn" onclick="exportAs('pdf')" title="Export as PDF (default)" aria-label="Export">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <button class="btn export-caret" id="export-caret-btn" onclick="toggleExportMenu(event)" title="Choose export format" aria-label="Choose export format">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="export-menu" id="export-menu">
+          <button onclick="exportAs('pdf')"><span>PDF</span><span class="em-tag">default</span></button>
+          <button onclick="exportAs('json')"><span>JSON</span></button>
+          <button onclick="exportAs('html')"><span>HTML</span></button>
+        </div>
+      </div>
+      <div class="user-switcher" id="user-switcher">
+        <div class="user-chip" id="user-chip" onclick="toggleUserMenu(event)">
+          <div class="user-avatar" id="user-chip-avatar"></div>
+          <div class="user-chip-info">
+            <div class="user-chip-name" id="user-chip-name"></div>
+            <div class="user-chip-role" id="user-chip-role"></div>
+          </div>
+          <svg class="user-chip-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="user-menu" id="user-menu"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="readonly-banner-mount"></div>
+
+  <div class="body">
+    <aside class="leftpanel">
+      <div class="left-tabs">
+        <button class="left-tab active" data-tab="fields" onclick="setLeftTab('fields')">Fields</button>
+        <button class="left-tab" data-tab="blocks" onclick="setLeftTab('blocks')">Blocks</button>
+      </div>
+      <div class="left-scroll" id="left-fields"></div>
+      <div class="left-scroll" id="left-blocks" style="display:none"></div>
+    </aside>
+
+    <main class="canvas-wrap" id="canvas-wrap">
+      <div class="canvas">
+        <div class="form-head" style="position:relative">
+          <div class="form-head-tools build-only">
+            <div class="tb-history build-only" id="tb-history">
+              <button type="button" class="tb-hist-btn icon-only" id="undo-btn" onclick="historyUndo()" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5A5.5 5.5 0 0 1 20 14.5 5.5 5.5 0 0 1 14.5 20H11"/></svg></button>
+              <button type="button" class="tb-hist-btn icon-only" id="redo-btn" onclick="historyRedo()" title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13"/></svg></button>
+            </div>
+            <button class="btn build-only" id="all-pages-btn" onclick="toggleShowAllPages()" title="Show every page in one scrolling view">
+              <svg id="all-pages-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/></svg>
+              <span id="all-pages-label">All pages</span>
+            </button>
+            <button class="btn build-only" id="autopop-btn" onclick="openAutopopManager()" title="Autopopulation — see at a glance where each field's answer carries over to your other forms, and link new ones">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              Autopopulation
+            </button>
+            <button class="btn build-only show-fields-entry" id="dispfields-btn" onclick="openDisplayManager()" title="Show Fields — manage which fields appear and on what conditions">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              Show Fields
+            </button>
+            <button class="btn build-only" id="scoring-btn" onclick="openScoringModal()" title="Scoring sections — cluster questions into scored screeners (e.g. PHQ-9, GAD-7) with severity bands and risk alerts">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 6-6"/></svg>
+              Scoring
+            </button>
+            <button class="btn build-only" id="formhead-share-btn" onclick="shareCurrentForm()" title="Share this form with roles, users &amp; contacts">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+              Share
+            </button>
+          </div>
+          <input class="form-title-input" id="form-title" placeholder="Enter form name here…" oninput="FORM.title=this.value; saveForm()">
+          <input class="form-desc-input" id="form-desc" placeholder="Add a description (optional)" oninput="FORM.desc=this.value; saveForm()">
+          <div id="form-status-badge" class="form-status-badge build-only is-draft" title="Unsaved changes — Save to commit to the database">● Draft</div>
+        </div>
+        <div id="rows-mount"></div>
+      </div>
+    </main>
+
+    <main class="preview-wrap" id="preview-wrap" style="display:none">
+      <div class="preview-form" id="preview-mount"></div>
+    </main>
+
+    <aside class="inspector" id="inspector"></aside>
+  </div>
+</div>
+
+<div class="block-select-bar" id="block-select-bar"></div>
+
+<div class="modal-overlay" id="export-modal">
+  <div class="modal">
+    <div class="modal-head"><h3 id="export-title">Export form</h3><button class="x-btn" onclick="closeModal('export-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px">
+        <button class="btn" id="export-json-tab" onclick="switchExportTab('json')" style="flex:1">JSON Schema</button>
+        <button class="btn" id="export-html-tab" onclick="switchExportTab('html')" style="flex:1">HTML Form</button>
+      </div>
+      <pre id="export-json" style="display:none"></pre>
+      <textarea id="export-html" style="display:none;width:100%;font-family:ui-monospace,Menlo,monospace;font-size:11px;min-height:400px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);resize:vertical;background:var(--white);color:var(--text-main)"></textarea>
+      <label id="export-scores-row" style="display:none;align-items:flex-start;gap:8px;margin-top:12px;font-size:12.5px;color:var(--text-muted);cursor:pointer;line-height:1.4">
+        <input type="checkbox" id="export-scores-toggle" style="margin-top:2px;flex-shrink:0" onchange="toggleExportScores(this.checked)">
+        <span>Show the live score panel to respondents in the exported form. Off by default — for clinical screeners, surfacing a real-time severity band to the patient is usually not appropriate.</span>
+      </label>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="copyExport()">Copy to clipboard</button><button class="btn" onclick="downloadExport()">Download</button><button class="btn primary" onclick="closeModal('export-modal')">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="rowviz-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-head"><h3>Show Forms</h3><button class="x-btn" onclick="closeModal('rowviz-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body"><div id="rowviz-body" class="viz-section"></div></div>
+    <div class="modal-foot"><button class="btn primary" onclick="closeModal('rowviz-modal')">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dispfields-modal">
+  <div class="modal dispfields-modal" id="dispfields-modal-box" style="max-width:860px">
+    <div class="modal-head"><h3>Show Fields</h3>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="btn" id="dispfields-expand-btn" style="font-size:12px;padding:5px 11px" onclick="toggleDispExpand()" title="Expand to see all conditions without scrolling">⤢ Expand</button>
+        <button class="x-btn" title="Save &amp; close" onclick="dispDone()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+    <div class="modal-body"><div id="dispfields-body"></div></div>
+    <div class="modal-foot" style="justify-content:space-between">
+      <button class="btn" style="color:var(--problem)" onclick="dispClearRule()">Clear rule</button>
+      <div style="display:flex;gap:8px"><button class="btn" onclick="dispSave()">Save</button><button class="btn primary" onclick="dispDone()">Save &amp; Close</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dispmgr-modal">
+  <div class="modal dispmgr-box" style="max-width:880px;width:94vw">
+    <div class="modal-head"><h3>Show Fields</h3><button class="x-btn" onclick="closeModal('dispmgr-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body"><p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">Manage which fields show or hide, and on what conditions — all from one place.</p><div id="dispmgr-body"></div></div>
+    <div class="modal-foot" style="justify-content:space-between"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn build-only" id="clear-showfields-btn" onclick="clearAllShowFieldsRules()" title="Remove every Show Fields rule on this form — all fields go back to Always shown">⌫ Clear all rules</button></div><button class="btn primary" onclick="closeModal('dispmgr-modal')">Done</button></div>
+  </div>
+</div>
+
+<!-- Recipients popover for a rule's notifications (opened from the bell on a Show Fields rule row) -->
+<div id="notify-pop" class="notify-pop" role="dialog" aria-label="Notification recipients"></div>
+
+<div id="popupform-modal">
+  <div class="popupform-panel">
+    <div class="popupform-head">
+      <span class="popupform-title">Form</span>
+      <button class="popupform-btn" title="Minimize / restore" onclick="popupFormToggleMin()">—</button>
+      <button class="popupform-btn" title="Maximize / restore" onclick="popupFormMax()">▢</button>
+      <button class="popupform-btn return" title="Return to the original form" onclick="popupFormClose()">Return ✕</button>
+    </div>
+    <div class="popupform-body"><iframe id="popupform-frame" title="Linked form"></iframe></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="formrule-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head"><h3>When to show this form</h3><button class="x-btn" onclick="closeModal('formrule-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body"><div id="formrule-body"></div></div>
+    <div class="modal-foot"><button class="btn primary" onclick="closeModal('formrule-modal')">Done</button></div>
+  </div>
+</div>
+
+
+<div class="modal-overlay" id="saveblock-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head"><h3>Save as block</h3><button class="x-btn" onclick="closeModal('saveblock-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="modal-field"><label>Block name</label><input type="text" id="saveblock-name" placeholder="e.g. Contact info"></div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:6px">This row's fields will be saved as a reusable block:</p>
+      <div class="save-block-list" id="saveblock-fields"></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('saveblock-modal')">Cancel</button><button class="btn primary" onclick="confirmSaveBlock()">Save block</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="adv-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head"><h3 id="adv-modal-title">Advanced Options</h3><button class="x-btn" onclick="closeAdvancedOptions()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" id="adv-modal-body"></div>
+    <div class="modal-foot"><button class="btn primary" onclick="closeAdvancedOptions()">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="form-style-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <div class="forms-tabseg" role="tablist" aria-label="Forms">
+        <button onclick="formsTab('mine')">My Forms</button>
+        <button onclick="formsTab('system')">System Forms</button>
+        <button class="on" onclick="formsTab('style')">Style</button>
+      </div>
+      <button class="x-btn" onclick="closeModal('form-style-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" id="form-style-body">
+      <!-- Populated by renderFormStyleModal() so the controls reflect FORM.style on every open -->
+    </div>
+    <div class="modal-foot">
+      <button class="fs-reset" type="button" onclick="resetFormStyle()">Reset to Credify default</button>
+      <div style="flex:1"></div>
+      <button class="btn primary" onclick="closeModal('form-style-modal')">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="forms-modal">
+  <div class="modal forms-manager">
+    <div class="modal-head">
+      <div class="forms-tabseg" role="tablist" aria-label="Forms">
+        <button class="on" onclick="formsTab('mine')">My Forms</button>
+        <button onclick="formsTab('system')">System Forms</button>
+        <button onclick="formsTab('style')">Style</button>
+      </div>
+      <button class="x-btn" onclick="closeModal('forms-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="forms-mgr">
+      <aside class="forms-mgr-sidebar" id="forms-mgr-sidebar"></aside>
+      <div class="forms-mgr-main">
+        <div class="forms-mgr-toolbar">
+          <div class="forms-search" id="forms-search">
+            <svg class="fs-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="forms-search-input" placeholder="Search forms by title, description, owner, or field…" oninput="onSearchInput(this.value)">
+            <button class="fs-clr" onclick="clearSearch()" title="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="forms-mgr-count" id="forms-mgr-count"></div>
+        </div>
+        <div class="forms-mgr-list" id="forms-list"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn primary" onclick="newForm(); closeModal('forms-modal')">+ New form</button><button class="btn" onclick="closeModal('forms-modal')">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="autopop-all-modal">
+  <div class="modal autopop-all-modal-box">
+    <div class="modal-head">
+      <h3>All autopopulated fields</h3>
+      <button class="x-btn" onclick="closeModal('autopop-all-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="autopop-mgr-intro" id="autopop-all-sub"></div>
+    <div class="forms-search autopop-all-search" id="autopop-all-search">
+      <svg class="fs-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="autopop-all-search-input" placeholder="Search fields or forms with autopopulation…" oninput="autopopAllSearch(this.value)">
+      <button class="fs-clr" onclick="autopopAllClearSearch()" title="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="autopop-all-body" id="autopop-all-body"></div>
+    <div class="modal-foot"><span class="autopop-foot-note">Every field that shares a value across forms, grouped by its parent.</span><button class="btn primary" onclick="closeModal('autopop-all-modal')">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="autopop-manager-modal">
+  <div class="modal autopop-mgr-modal">
+    <div class="modal-head">
+      <h3>Autopopulation</h3>
+      <button class="x-btn" onclick="closeModal('autopop-manager-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="autopop-mgr-intro" id="autopop-mgr-intro"></div>
+    <div class="forms-search autopop-mgr-search" id="autopop-mgr-search">
+      <svg class="fs-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="autopop-mgr-search-input" placeholder="Search fields on this form…" oninput="autopopMgrSearch(this.value)">
+      <button class="fs-clr" onclick="autopopMgrClearSearch()" title="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="autopop-mgr-list" id="autopop-mgr-list"></div>
+    <div class="modal-foot" style="justify-content:space-between"><div style="display:flex;align-items:center;gap:8px"><button class="btn build-only" id="autopop-all-btn" onclick="openAutopopAllReport()" title="See every autopopulated field across all your forms (admin)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>All autopopulated fields</button><button class="btn build-only" onclick="downloadAutopopBench()" title="Download a standalone side-by-side test page: fill a linked field in one form and watch it autopopulate the other, with a live inspector and change log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Test bench</button></div><div style="display:flex;align-items:center;gap:12px;min-width:0"><span class="autopop-foot-note">Linked fields share one answer live across forms via the in-browser bridge — no server involved.</span><button class="btn primary" onclick="closeModal('autopop-manager-modal')">Done</button></div></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="autopop-modal">
+  <div class="modal autopop-modal">
+    <div class="modal-head">
+      <h3>Autopopulation</h3>
+      <button class="x-btn" onclick="closeModal('autopop-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="autopop-srcbar" id="autopop-srcbar"></div>
+    <div class="autopop-body">
+      <aside class="autopop-forms">
+        <div class="forms-search" id="autopop-search">
+          <svg class="fs-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="autopop-search-input" placeholder="Search your forms…" oninput="autopopSearch(this.value)">
+          <button class="fs-clr" onclick="autopopClearSearch()" title="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+        <div class="autopop-formlist" id="autopop-formlist"></div>
+      </aside>
+      <div class="autopop-fields">
+        <div class="forms-search" id="autopop-field-search">
+          <svg class="fs-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="autopop-field-search-input" placeholder="Search fields on this form…" oninput="autopopFieldSearch(this.value)">
+          <button class="fs-clr" onclick="autopopFieldClearSearch()" title="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+        <div class="autopop-fieldlist" id="autopop-fieldlist"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="autopop-foot-note">Click a field to link or unlink it — linked fields share this answer automatically.</span><button class="btn primary" onclick="closeModal('autopop-modal')">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="autopop-dir-confirm">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-head">
+      <h3>Overwrite destination?</h3>
+      <button class="x-btn" onclick="autopopCancelDir()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div style="padding:20px 22px">
+      <div class="autopop-dir-warn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span id="autopop-dir-confirm-text"></span>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="autopopCancelDir()">Cancel</button><button class="btn primary" onclick="autopopConfirmDir()">Yes, overwrite</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="ru-picker-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-head"><h3 id="ru-picker-title">Choose roles &amp; users</h3><button class="x-btn" onclick="closeModal('ru-picker-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <p id="ru-picker-sub" style="font-size:12.5px;color:var(--text-muted);line-height:1.5;margin:0 0 12px"></p>
+      <input id="ru-search" class="ru-search" type="text" placeholder="Search users by name or email…" oninput="renderRUList()">
+      <div id="ru-list" class="ru-list"></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('ru-picker-modal')">Cancel</button><button class="btn primary" onclick="ruConfirm()">Apply</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="users-modal">
+  <div class="modal" style="max-width:960px;width:95vw">
+    <div class="modal-head"><h3>Manage Users</h3><button class="x-btn" onclick="closeModal('users-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="invite-row">
+        <div class="modal-field"><label>First name</label><input type="text" id="invite-first" placeholder="First"></div>
+        <div class="modal-field"><label>Last name</label><input type="text" id="invite-last" placeholder="Last"></div>
+        <div class="modal-field"><label>Email</label><input type="text" id="invite-email" placeholder="user@company.com"></div>
+        <div class="modal-field"><label>Phone</label><input type="tel" inputmode="tel" id="invite-phone" placeholder="(555) 123-4567"></div>
+        <div class="modal-field"><label>Mobile</label><input type="tel" inputmode="tel" id="invite-mobile" placeholder="(555) 123-4567"></div>
+        <div class="modal-field role-pick"><label>Role</label>
+          <select class="enhance-dd" id="invite-role">
+            <option value="viewer">Viewer</option>
+            <option value="editor" selected>Editor</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <button class="btn primary" style="height:38px;flex-shrink:0" onclick="inviteUser()">+ Invite</button>
+      </div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);margin:0 2px 8px">All users</div>
+      <div class="users-list" id="users-list"></div>
+    </div>
+    <div class="modal-foot"><button class="btn primary" onclick="closeModal('users-modal')">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="clients-modal">
+  <div class="modal" style="max-width:960px;width:95vw">
+    <div class="modal-head"><h3>Contact Directory</h3><button class="x-btn" onclick="closeModal('clients-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="invite-row">
+        <div class="modal-field"><label>First name</label><input type="text" id="client-first" placeholder="First"></div>
+        <div class="modal-field"><label>Last name</label><input type="text" id="client-last" placeholder="Last"></div>
+        <div class="modal-field"><label>Email</label><input type="text" id="client-email" placeholder="client@example.com"></div>
+        <div class="modal-field"><label>Phone</label><input type="tel" inputmode="tel" id="client-phone" placeholder="(555) 123-4567"></div>
+        <div class="modal-field"><label>Mobile</label><input type="tel" inputmode="tel" id="client-mobile" placeholder="(555) 123-4567"></div>
+        <div class="modal-field"><label>DOB</label><input type="date" id="client-dob"></div>
+        <div class="modal-field"><label>MRN / ID</label><input type="text" id="client-mrn" placeholder="optional"></div>
+        <div class="modal-field"><label>Receives via</label>
+          <select class="enhance-dd" id="client-notify">
+            <option value="email" selected>Email</option>
+            <option value="sms">SMS</option>
+            <option value="both">Email + SMS</option>
+          </select>
+        </div>
+        <button class="btn primary" style="height:38px;flex-shrink:0" onclick="addClient()">+ Add</button>
+      </div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);margin:0 2px 8px">All contacts</div>
+      <div class="users-list" id="clients-list"></div>
+    </div>
+    <div class="modal-foot"><button class="btn primary" onclick="closeModal('clients-modal')">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reports-modal">
+  <div class="modal reports-modal" style="max-width:1080px;width:96vw">
+    <div class="modal-head"><h3>Reports</h3><button class="x-btn" onclick="closeModal('reports-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body"><div id="reports-body"></div></div>
+    <div class="modal-foot" style="justify-content:space-between">
+      <button class="btn build-only" onclick="seedReportingSampleForms()" title="Create 5 mental-health intake forms (~25 fields each) with 25 realistic responses each — replaces any existing reporting samples">+ Add 5 reporting sample forms</button>
+      <button class="btn primary" onclick="closeModal('reports-modal')">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="roles-modal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-head"><h3>Roles &amp; Permissions</h3><button class="x-btn" onclick="closeModal('roles-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="role-add">
+        <input type="text" id="new-role-name" placeholder="New role name (e.g. Clinician, Front desk)" onkeydown="if(event.key==='Enter'){addRole(this.value);this.value='';}">
+        <button class="btn primary" style="flex-shrink:0" onclick="var el=document.getElementById('new-role-name');addRole(el.value);el.value='';">+ Add role</button>
+      </div>
+      <div class="roles-list" id="roles-list"></div>
+    </div>
+    <div class="modal-foot"><button class="btn primary" onclick="closeModal('roles-modal')">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="share-modal">
+  <div class="modal share-modal-lg" style="max-width:880px;width:94vw">
+    <div class="modal-head"><h3>Share form</h3><button class="x-btn" onclick="closeModal('share-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="share-target" id="share-target"></div>
+      <!-- Share to ROLES (internal), USERS (internal), or CONTACTS (external delivery).
+           Roles/Users get access + a notification on their dashboard; Contacts receive
+           the form via their configured channel, email, or SMS. -->
+      <div class="share-tabs" id="share-tabs">
+        <button class="on" data-tab="users" onclick="shareSetTab('users')">Users</button>
+        <button data-tab="roles" onclick="shareSetTab('roles')">Roles</button>
+        <button data-tab="contacts" onclick="shareSetTab('contacts')">Contacts</button>
+      </div>
+      <div class="share-add-row" id="share-add-users">
+        <div class="modal-field"><label>Add a user</label>
+          <select class="enhance-dd" id="share-user-pick"></select>
+        </div>
+        <div class="modal-field access-pick"><label>Access</label>
+          <select class="enhance-dd" id="share-access-pick">
+            <option value="view">Can view</option>
+            <option value="edit" selected>Can edit</option>
+          </select>
+        </div>
+        <button class="btn primary" style="height:38px;flex-shrink:0" onclick="addShare()">Add</button>
+      </div>
+      <div class="share-add-row" id="share-add-roles" style="display:none">
+        <div class="modal-field"><label>Add a role</label>
+          <select class="enhance-dd" id="share-role-pick"></select>
+        </div>
+        <div class="modal-field access-pick"><label>Access</label>
+          <select class="enhance-dd" id="share-role-access-pick">
+            <option value="view">Can view</option>
+            <option value="edit" selected>Can edit</option>
+          </select>
+        </div>
+        <button class="btn primary" style="height:38px;flex-shrink:0" onclick="addRoleShare()">Add</button>
+      </div>
+      <div class="share-add-row" id="share-add-contacts" style="display:none">
+        <div class="modal-field"><label>Add a contact</label>
+          <select class="enhance-dd" id="share-contact-pick"></select>
+        </div>
+        <div class="modal-field access-pick"><label>Deliver via</label>
+          <select class="enhance-dd" id="share-contact-via">
+            <option value="config" selected>Their configuration</option>
+            <option value="email">Email</option>
+            <option value="sms">SMS</option>
+          </select>
+        </div>
+        <button class="btn primary" style="height:38px;flex-shrink:0" onclick="addContactShare()">Add</button>
+      </div>
+      <p class="share-tab-hint" id="share-tab-hint">Internal — the user gets access and a notification on their dashboard.</p>
+      <div class="share-list-h">People &amp; roles with access</div>
+      <div class="share-list" id="share-list"></div>
+    </div>
+    <div class="modal-foot" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="btn" onclick="closeModal('share-modal');openCollectModal()" title="Create a patient link or QR to collect responses">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Patient link &amp; QR
+        </button>
+        <a href="#" class="share-seeqr-link" onclick="event.preventDefault();closeModal('share-modal');openCollectModal(true)" title="Jump straight to the scannable QR code">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="14.01"/><line x1="21" y1="14" x2="21" y2="14.01"/><line x1="14" y1="21" x2="14" y2="21.01"/><line x1="21" y1="21" x2="21" y2="21.01"/><line x1="17.5" y1="17.5" x2="17.5" y2="17.51"/></svg>
+          See QR
+        </a>
+      </div>
+      <button class="btn primary" onclick="closeModal('share-modal')">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="scoring-modal">
+  <div class="modal scoring-modal" id="scoring-modal-box" style="max-width:960px">
+    <div class="modal-head"><h3>Scoring Groups</h3>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="btn" id="scoring-find-btn" style="font-size:12px;padding:5px 11px" onclick="toggleScoringSearch()" title="Search all your saved scoring groups"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;margin-right:3px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Find a group</button>
+        <button class="btn" id="scoring-expand-btn" style="font-size:12px;padding:5px 11px" onclick="toggleScoringExpand()" title="Expand to a wide two-column view">⤢ Expand</button>
+        <button class="x-btn" title="Save &amp; close" onclick="closeModal('scoring-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div id="scoring-search-panel" class="scoring-search-panel" style="display:none">
+        <div class="scoring-groupsearch-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="scoring-group-search" type="text" placeholder="Search saved scoring groups (this form or any form)…" oninput="scoringGroupSearch(this.value)">
+        </div>
+      </div>
+      <div id="scoring-sections-list"></div>
+    </div>
+    <div class="modal-foot" style="justify-content:space-between">
+      <div class="scoring-add-controls">
+        <button class="btn" onclick="createScoringSection(1)">+ New scoring group</button>
+        <span class="scoring-multi-add">
+          <span class="scoring-multi-lbl">or add</span>
+          <input type="number" id="scoring-multi-n" class="scoring-multi-n" min="2" max="20" value="3" title="How many groups to add" onkeydown="if(event.key==='Enter'){event.preventDefault();createScoringSectionMulti();}">
+          <button class="btn" onclick="createScoringSectionMulti()">+ Add multiple</button>
+        </span>
+      </div>
+      <div style="display:flex;gap:8px"><button class="btn primary" onclick="closeModal('scoring-modal')">Save &amp; Add Scoring</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="instruments-modal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-head">
+      <div class="forms-tabseg" role="tablist" aria-label="Forms">
+        <button onclick="formsTab('mine')">My Forms</button>
+        <button class="on" onclick="formsTab('system')">System Forms</button>
+        <button onclick="formsTab('style')">Style</button>
+      </div>
+      <button class="x-btn" onclick="closeModal('instruments-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12.5px;color:var(--text-muted);line-height:1.5;margin-bottom:14px">Insert a standard screening form — questions, point values, severity bands, and risk alerts come prewired. Two groups are available below: scored screening forms, and unscored intake, assessment, and consent templates the patient fills out. Everything is fully editable after inserting.</div>
+      <div id="instruments-list"></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('instruments-modal')">Close</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="collect-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <h3>Share &amp; collect responses</h3>
+      <button class="x-btn" onclick="closeModal('collect-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div id="share-status" style="font-size:12.5px;color:var(--text-muted);line-height:1.5;margin-bottom:14px"></div>
+      <div id="share-main" style="display:none">
+        <div style="font:600 11px Sora;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:6px">Public link</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input id="share-url" readonly style="flex:1;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font:13px Sora;background:var(--surface,#f4f7f5)">
+          <button class="btn" type="button" onclick="copyShare('share-url')">Copy</button>
+        </div>
+        <div style="display:flex;gap:18px;align-items:flex-start;margin-bottom:6px">
+          <div id="share-qr" style="width:140px;height:140px;display:grid;place-items:center;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(--text-muted);font-size:11px">QR</div>
+          <div style="flex:1">
+            <div style="font:600 11px Sora;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:6px">Embed</div>
+            <textarea id="share-embed" readonly rows="4" style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font:12px ui-monospace,monospace;background:var(--surface,#f4f7f5);resize:vertical"></textarea>
+            <button class="btn" type="button" onclick="copyShare('share-embed')" style="margin-top:6px">Copy embed code</button>
+          </div>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+        <div style="font:600 11px Sora;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:6px">One-time patient links</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input id="share-label" placeholder="Patient name / reference (optional)" style="flex:1;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font:13px Sora">
+          <input id="share-exp" type="number" min="1" placeholder="Expires (days)" style="width:120px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font:13px Sora">
+          <button class="btn primary" type="button" onclick="createPatientLink()">Create</button>
+        </div>
+        <div id="share-links"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('collect-modal')">Close</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Right-click context menu for a single field on the builder canvas.
+     Shared element; the targeted field id is stashed in JS while it's open. -->
+<div class="field-ctx-menu" id="field-ctx-menu" role="menu" aria-hidden="true">
+  <button type="button" class="fcm-item danger" role="menuitem" onmousedown="event.preventDefault()" onclick="contextMenuDeleteField()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+    Delete field
+  </button>
+</div>
+
+<script>
+// @include js/app.main.js
+</script>
+<!-- Credify cloud bridge (sync): mirror localStorage form changes back to the
+     server (debounced), and add an account bar with Sign out. The builder
+     keeps using localStorage as its working store; persistForms() is the one
+     choke-point it calls on every change, so we wrap it. -->
+<script>
+// @include js/cloud-sync.js
+</script>
+
+</body>
+</html>

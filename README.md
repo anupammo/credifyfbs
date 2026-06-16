@@ -2,11 +2,18 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Version](https://img.shields.io/badge/Extension-v1.2.0-green)](./manifest.json)
+[![Version](https://img.shields.io/badge/Extension-v2.0.0-green)](./manifest.json)
+[![UI](https://img.shields.io/badge/UI-v3_modular_build-1a8a66)](./src)
 [![Backend](https://img.shields.io/badge/Backend-Next.js_16-black)](./backend)
 [![DB](https://img.shields.io/badge/Database-PostgreSQL_16-blue)](./backend/prisma)
 [![Deploy](https://img.shields.io/badge/Deploy-GCP_Cloud_Run-orange)](./infra)
 [![License](https://img.shields.io/badge/License-Internal--Use--Only-red)](#)
+
+> 🚧 **v3 in progress (branch `v3.1`)** — the builder UI is being replaced by the new
+> prototype (added modules: Show-Fields manager, Autopopulation, Reports, Contacts,
+> Roles, System Instruments, Notifications) and refactored into a modular source tree
+> built into `app.html`. See [`CHANGELOG.md`](./CHANGELOG.md) and
+> [`docs/V3-MIGRATION-PLAN.md`](./docs/V3-MIGRATION-PLAN.md) for status.
 
 ---
 
@@ -68,7 +75,7 @@ app.html  (sandboxed) ── localStorage shim
   full form builder UI
 ```
 
-**localStorage bridge:** A tiny shim injected into `app.html` provides a synchronous `localStorage` API. On load, the shim is seeded with data passed via the iframe URL hash. Every `setItem` / `removeItem` is forwarded to `newtab.js` via `postMessage`, which debounces and persists to `chrome.storage.local`.
+**localStorage bridge:** A tiny shim provides a synchronous `localStorage` API (the MV3 sandbox runs on a null origin where the real one throws). On load, the shim is seeded via a `postMessage` handshake with `newtab.js`; every `setItem` / `removeItem` is forwarded back, debounced, and persisted to `chrome.storage.local`. **As of v3 this shim lives in `src/js/runtime.js`**, which also detects whether the app is running as the extension or the hosted web app and selects the matching auth/transport (JWT Bearer vs cookie session).
 
 ### v1.0 File Map
 
@@ -78,7 +85,7 @@ app.html  (sandboxed) ── localStorage shim
 | `background.js` | Service worker — opens app window, sized to 90 % of screen |
 | `newtab.html` | Host page — frames `app.html` in a 90 vw/vh rounded card |
 | `newtab.js` | Host logic — storage bridge, seed/persist cycle |
-| `app.html` | Complete form builder UI — styles + HTML + JavaScript (~7 000 lines) |
+| `app.html` | Complete form builder UI — **as of v3, a build artifact** generated from `src/` (see §5) |
 | `icons/` | Extension toolbar icons (16 / 48 / 128 px) |
 
 ### v1.0 Data model (localStorage keys)
@@ -180,11 +187,27 @@ app.html  (sandboxed) ── localStorage shim
 ```
 credifyfbs/
 │
-├── manifest.json                # v1.0 MV3 extension root (current branch)
+├── manifest.json                # MV3 extension root (current branch)
 ├── background.js                # Service worker — opens app window
 ├── newtab.html / newtab.js      # Host page + storage bridge
-├── app.html                     # Full form builder UI (~7 000 lines)
+├── app.html                     # ⚙️ GENERATED — built from src/ (do not edit by hand)
 ├── icons/                       # Extension toolbar icons
+│
+├── package.json                 # v3 build scripts (build / build:check / watch)
+├── build/                       # Node build step (no extra dependencies)
+│   ├── extract.mjs              # one-shot: split a prototype HTML into src/ modules
+│   └── build.mjs                # reassemble src/ → app.html via @include markers
+├── src/                         # ✅ v3 modular source (edit here)
+│   ├── index.html               # HTML shell — topbar, canvas, all modals
+│   ├── styles/app.css           # design system + component styles
+│   └── js/
+│       ├── runtime.js           # dual-runtime: extension⟷web detect, shim, CredifyNet, auth
+│       ├── preboot.js           # WEB-only cloud pre-seed (no-op in extension)
+│       ├── app.main.js          # main builder application
+│       └── cloud-sync.js        # WEB-only server mirror + account bar
+│
+├── docs/
+│   └── V3-MIGRATION-PLAN.md     # phased plan + status for the v3 migration
 │
 ├── backend/                     # ✅ v1.1 Next.js 16 API backend (scaffolded)
 │   ├── app/api/
@@ -976,6 +999,21 @@ cd credifyfbs/backend
 npm install
 ```
 
+### 1b. Build the extension UI (v3)
+
+`app.html` is generated from the modular source in `src/`. Edit the modules under
+`src/` — never `app.html` directly — then rebuild from the repo root:
+
+```bash
+cd ..                 # repo root
+npm run build         # assemble src/ → app.html
+npm run watch         # (optional) rebuild on every change
+npm run build:check   # CI guard — fails if app.html is stale vs src/
+```
+
+The build is pure Node (no dependencies to install). Load the unpacked extension as
+usual; `app.html` is the built output the manifest points at.
+
 ### 2. PostgreSQL setup (first time only)
 
 PostgreSQL 16 is installed at `C:\Program Files\PostgreSQL\16\bin\`. The service starts automatically with Windows.
@@ -1123,6 +1161,24 @@ hmac-secret       → HMAC_SECRET
 ---
 
 ## 14. Roadmap
+
+> Full, dated history in [`CHANGELOG.md`](./CHANGELOG.md).
+
+### v3.0 — UI/UX Overhaul & Modular Build 🚧 In Progress (`v3.1`)
+
+- [x] **Phase 0** — modular build pipeline (`build/` + `src/`); `app.html` generated;
+      build reproduces the prototype byte-identically; all modules pass `node --check`
+- [x] **Phase 1** — dual-runtime boot/auth layer (`runtime.js`): extension⟷web detect,
+      MV3 shim, seed-gated boot, `CredifyNet` transport; web-mode render verified
+- [ ] **Phase 2** — backend models + routes: Contacts, Roles, Submissions, Notifications,
+      extended Users; reconcile prototype web endpoints with the `/api/auth/*` + REST surface
+- [ ] **Phase 3** — wire new modules (Reports, Contacts, Roles, Share, Notifications) to the
+      backend; restore extension↔server sync via `CredifyNet`/JWT
+- [ ] **Phase 0b / 4 / 5** — finer module carving, full regression pass, docs & deploy
+- New prototype modules being integrated: Show-Fields manager (stackable AND/OR/NOT),
+  Autopopulation (cross-form linking), Reports builder, Contact directory, Roles &
+  permissions, System Instruments (PHQ-9/GAD-7/PCL-5/AUDIT/DAST-10/C-SSRS), Notifications,
+  Scale/matrix field, Undo/Redo
 
 ### v1.0 — Local Extension ✅ Complete
 

@@ -1,0 +1,12 @@
+{
+  "name": "credify-form-builder",
+  "version": "3.0.0-dev",
+  "private": true,
+  "description": "Credify Form Builder — Chrome extension (MV3) + hosted web app. Modular source built into app.html.",
+  "type": "module",
+  "scripts": {
+    "build": "node build/build.mjs",
+    "build:check": "node build/build.mjs --check",
+    "watch": "node build/build.mjs --watch"
+  }
+}
