@@ -2613,6 +2613,17 @@ select.addr-part{appearance:auto;-webkit-appearance:auto;height:auto;min-height:
 .api-status.online{background:var(--mint-pale);color:var(--green-primary)}
 .api-status.offline{background:var(--caution-soft);color:var(--caution)}
 .api-status-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+/* Account bar (top-right pill): Alerts / Responses / Admin / Sign out */
+.account-bar{position:fixed;top:10px;right:12px;z-index:90;display:flex;gap:8px;align-items:center;background:var(--mint-pale);border:1px solid var(--mint-pale-2);border-radius:999px;padding:6px;box-shadow:var(--shadow-md)}
+.account-link{display:inline-flex;align-items:center;gap:6px;font:600 12px 'Sora',system-ui,sans-serif;color:var(--green-deep);background:var(--white);border:1px solid var(--mint-pale-2);border-radius:999px;padding:6px 13px;text-decoration:none;cursor:pointer;transition:border-color .12s ease,color .12s ease}
+.account-link:hover{border-color:var(--green-primary);color:var(--green-primary)}
+.account-link svg{width:14px;height:14px;flex-shrink:0}
+.acct-badge{display:inline-flex;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--problem);color:#fff;font-size:10px;font-weight:700;align-items:center;justify-content:center;margin-left:3px}
+.acct-badge[hidden]{display:none}
+.account-auth{display:inline-flex;align-items:center;gap:6px;font:600 12px 'Sora',system-ui,sans-serif;color:#fff;background:var(--green-primary);border:none;border-radius:999px;padding:7px 14px;cursor:pointer;transition:background .12s ease}
+.account-auth:hover{background:var(--green-deep)}
+.account-auth svg{width:14px;height:14px;flex-shrink:0}
+@media(max-width:680px){.account-link span:not(.acct-badge),.account-link{font-size:0}.account-link svg{width:16px;height:16px}.account-auth{font-size:0;padding:8px}.account-auth svg{width:16px;height:16px}}
 .modal{background:var(--white);border-radius:var(--radius-md);width:100%;max-width:620px;max-height:84vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg)}
 .modal-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)}
 .modal-head h3{font-size:21px}
@@ -4030,14 +4041,6 @@ body.block-selecting .field.block-sel{border-color:var(--green-primary);box-shad
           <button onclick="exportAs('html')"><span>Export HTML</span></button>
         </div>
       </div>
-      <button class="btn" id="signin-btn" onclick="showLoginModal()" style="display:none" title="Sign in to your account">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-        Sign in
-      </button>
-      <button class="btn" id="signout-btn" onclick="doLogout()" style="display:none" title="Sign out">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Sign out
-      </button>
       <div class="user-switcher" id="user-switcher">
         <div class="user-chip" id="user-chip" onclick="toggleUserMenu(event)">
           <div class="user-avatar" id="user-chip-avatar"></div>
@@ -4050,6 +4053,27 @@ body.block-selecting .field.block-sel{border-color:var(--green-primary);box-shad
         <div class="user-menu" id="user-menu"></div>
       </div>
     </div>
+  </div>
+
+  <!-- Account bar (top-right): portal nav + session controls, per mockup.
+       Portal links open the Credify web app; Sign out uses the JWT session. -->
+  <div class="account-bar" id="account-bar">
+    <a class="account-link" id="acct-alerts" href="https://chrome.credifyfast.com/alerts" target="_blank" rel="noopener" title="Alerts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      Alerts<span class="acct-badge" id="acct-alerts-badge" hidden></span>
+    </a>
+    <a class="account-link" id="acct-responses" href="https://chrome.credifyfast.com/responses" target="_blank" rel="noopener" title="Responses">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+      Responses
+    </a>
+    <a class="account-link" id="acct-admin" href="https://chrome.credifyfast.com/admin" target="_blank" rel="noopener" title="Admin" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Admin
+    </a>
+    <button class="account-auth" id="signout-btn" onclick="doLogout()" title="Sign out">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sign out
+    </button>
   </div>
 
   <div id="readonly-banner-mount"></div>
@@ -22133,12 +22157,13 @@ function updateApiStatus(online){
   if(online){ el.className='api-status online'; el.innerHTML='<span class="api-status-dot"></span> Connected'; }
   else{ el.className='api-status offline'; el.innerHTML='<span class="api-status-dot"></span> Offline'; }
 }
-// Topbar Sign in / Sign out toggle: signed-in shows "Sign out", offline "Sign in".
+// Account bar state. Alerts/Responses/Sign out are always present (per mockup);
+// the Admin link only shows for admins. Sign out works in both modes (offline
+// it simply reopens the sign-in gate).
 function updateAuthUI(){
-  const signin=document.getElementById('signin-btn');
-  const signout=document.getElementById('signout-btn');
-  if(signin) signin.style.display = API_MODE ? 'none' : '';
-  if(signout) signout.style.display = API_MODE ? '' : 'none';
+  const admin=document.getElementById('acct-admin');
+  if(admin) admin.hidden = !(typeof isAdmin==='function' && isAdmin());
+  if(typeof reserveTopbarSpace==='function'){ try{ reserveTopbarSpace(); }catch(e){} }
 }
 
 /* ── Entry: gate the (already-booted) app behind sign-in / offline ──────── */
@@ -22173,13 +22198,19 @@ _credifyInit();
     else setTimeout(function () { ready(fn); }, 30);
   }
   ready(function () {
-    // Re-run the toolbar's overflow reflow and re-align the mode cluster.
+    // Reserve room on the topbar equal to the floating account bar's width so
+    // the toolbar's right-aligned tools stop short of it, then re-run the
+    // overflow reflow and re-align the mode cluster.
     function reserveTopbarSpace() {
       try {
+        var tb = document.querySelector('.topbar');
+        var bar = document.getElementById('account-bar');
+        if (tb) tb.style.paddingRight = (bar ? bar.getBoundingClientRect().width + 24 : 0) + 'px';
         if (typeof window.scheduleReflow === 'function') window.scheduleReflow();
         requestAnimationFrame(alignClusterToAllPages);
       } catch (e) {}
     }
+    window.reserveTopbarSpace = reserveTopbarSpace; // let updateAuthUI re-measure after Admin toggles
     // Align the Build/Preview cluster's LEFT edge under the form toolbar's
     // "All pages" button (build mode only). Measured at runtime so it holds
     // across window sizes; in preview the All-pages button is hidden (width 0)
@@ -22213,9 +22244,14 @@ _credifyInit();
       };
     }
     // Measure after layout settles (the bar's buttons/badge affect its width).
+    // Re-measure once webfonts load and on a later tick — the account bar grows
+    // after Sora loads / the Admin link appears, so a single early pass under-
+    // reserves and the topbar tools slip beneath the bar.
     requestAnimationFrame(reserveTopbarSpace);
     setTimeout(reserveTopbarSpace, 300);
+    setTimeout(reserveTopbarSpace, 900);
     setTimeout(alignClusterToAllPages, 320);
+    try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(reserveTopbarSpace); } catch (e) {}
     window.addEventListener('resize', reserveTopbarSpace);
   });
 })();

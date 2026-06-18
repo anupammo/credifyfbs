@@ -5,7 +5,7 @@
       "name": "credify-static",
       "runtimeExecutable": "node",
       "runtimeArgs": [".claude/static-server.cjs"],
-      "port": 8765
+      "autoPort": true
     }
   ]
 }
