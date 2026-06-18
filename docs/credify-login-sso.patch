@@ -26,18 +26,42 @@ index b8aeb39..8f3a8c7 100644
      return response;
    } catch (error) {
 diff --git a/app/api/auth/login/route.ts b/app/api/auth/login/route.ts
-index 85c9f4a..cdcfad7 100644
+index 85c9f4a..0508af7 100644
 --- a/app/api/auth/login/route.ts
 +++ b/app/api/auth/login/route.ts
-@@ -1,6 +1,6 @@
+@@ -1,12 +1,17 @@
  import { NextRequest, NextResponse } from 'next/server';
  import { prisma } from '@/lib/prisma';
 -import { verifyPassword, generateToken } from '@/lib/auth';
 +import { verifyPassword, generateToken, cookieOptions, AUTH_COOKIE } from '@/lib/auth';
++import { withCors, corsPreflight } from '@/lib/cors';
++
++export async function OPTIONS(req: NextRequest) {
++  return corsPreflight(req);
++}
  
  export async function POST(req: NextRequest) {
    try {
-@@ -24,13 +24,7 @@ export async function POST(req: NextRequest) {
+     const { email, password, remember } = await req.json();
+     if (!email || !password) {
+-      return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
++      return withCors(NextResponse.json({ error: 'Email and password required' }, { status: 400 }), req);
+     }
+ 
+     const user = await prisma.user.findUnique({
+@@ -14,26 +19,20 @@ export async function POST(req: NextRequest) {
+     });
+ 
+     if (!user || !user.passwordHash) {
+-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
++      return withCors(NextResponse.json({ error: 'Invalid email or password' }, { status: 401 }), req);
+     }
+ 
+     const isValid = await verifyPassword(password, user.passwordHash);
+     if (!isValid) {
+-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
++      return withCors(NextResponse.json({ error: 'Invalid email or password' }, { status: 401 }), req);
+     }
  
      const token = generateToken(user.id, user.email, remember);
      const response = NextResponse.json({ success: true });
@@ -48,15 +72,21 @@ index 85c9f4a..cdcfad7 100644
 -      maxAge: remember ? 30 * 24 * 60 * 60 : 24 * 60 * 60,
 -      path: '/',
 -    });
+-    return response;
 +    response.cookies.set(AUTH_COOKIE, token, cookieOptions(remember ? 30 * 24 * 60 * 60 : 24 * 60 * 60));
-     return response;
++    return withCors(response, req);
    } catch (error) {
      console.error('Login error:', error);
+-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
++    return withCors(NextResponse.json({ error: 'Internal server error' }, { status: 500 }), req);
+   }
+ }
+\ No newline at end of file
 diff --git a/app/api/auth/logout/route.ts b/app/api/auth/logout/route.ts
-index 545d649..e6a4583 100644
+index 79fb488..dd46366 100644
 --- a/app/api/auth/logout/route.ts
 +++ b/app/api/auth/logout/route.ts
-@@ -1,7 +1,15 @@
+@@ -1,15 +1,15 @@
 -import { NextResponse } from 'next/server';
 +import { NextRequest, NextResponse } from 'next/server';
 +import { cookieOptions, AUTH_COOKIE } from '@/lib/auth';
@@ -69,17 +99,25 @@ index 545d649..e6a4583 100644
 +
 +export async function POST(req: NextRequest) {
    const response = NextResponse.json({ success: true });
--  response.cookies.set('credify_token', '', { httpOnly: true, maxAge: 0, path: '/' });
+-  // Must match the attributes the cookie was set with (secure + sameSite),
+-  // or browsers won't reliably delete it and the proxy keeps seeing a session.
+-  response.cookies.set('credify_token', '', {
+-    httpOnly: true,
+-    secure: process.env.NODE_ENV === 'production',
+-    sameSite: 'lax',
+-    maxAge: 0,
+-    path: '/',
+-  });
 -  return response;
 -}
 \ No newline at end of file
-+  // Clear with the SAME attributes (incl. domain) used when setting — otherwise
-+  // the browser won't remove the parent-domain cookie.
++  // Clear with the SAME attributes (incl. domain) the cookie was set with, or
++  // browsers won't reliably delete the parent-domain cookie.
 +  response.cookies.set(AUTH_COOKIE, '', cookieOptions(0));
 +  return withCors(response, req);
 +}
 diff --git a/app/api/auth/me/route.ts b/app/api/auth/me/route.ts
-index 50167ce..f3ebc04 100644
+index 50167ce..f6b4ec6 100644
 --- a/app/api/auth/me/route.ts
 +++ b/app/api/auth/me/route.ts
 @@ -1,13 +1,18 @@
@@ -110,9 +148,10 @@ index 50167ce..f3ebc04 100644
    });
  
 -  return NextResponse.json({ user });
-+  return withCors(NextResponse.json({ user }), req);
- }
+-}
 \ No newline at end of file
++  return withCors(NextResponse.json({ user }), req);
++}
 diff --git a/app/api/auth/signup/route.ts b/app/api/auth/signup/route.ts
 index a02f527..cfcf93d 100644
 --- a/app/api/auth/signup/route.ts
@@ -174,7 +213,7 @@ index 01a3170..14501c5 100644
    email: string;
 diff --git a/lib/cors.ts b/lib/cors.ts
 new file mode 100644
-index 0000000..db5f414
+index 0000000..d6a24c5
 --- /dev/null
 +++ b/lib/cors.ts
 @@ -0,0 +1,43 @@
@@ -183,9 +222,9 @@ index 0000000..db5f414
 +
 +/**
 + * Credentialed CORS for cross-origin SSO callers (forms.credifyfast.com checking
-+ * /api/auth/me and calling /api/auth/logout with the shared cookie). Credentialed
-+ * requests cannot use `*` — we reflect an allowlisted origin and set
-+ * Access-Control-Allow-Credentials.
++ * /api/auth/me, signing in via /api/auth/login, and signing out via
++ * /api/auth/logout with the shared cookie). Credentialed requests cannot use
++ * `*` — we reflect an allowlisted origin and set Access-Control-Allow-Credentials.
 + */
 +const STATIC_ALLOWED = [
 +  'https://forms.credifyfast.com',

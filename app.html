@@ -22197,18 +22197,35 @@ async function doLogin(){
   const btn=document.getElementById('login-btn');
   if(!email || !password){ errorEl.textContent='Please enter email and password'; errorEl.style.display='block'; return; }
   btn.disabled=true; btn.textContent='Signing in…';
-  const result=await CredifyAPI.login(email, password);
+
+  // Authenticate against the CENTRAL credify-login user table (the single source
+  // of truth). A successful login sets the shared .credifyfast.com cookie, so the
+  // builder is then authorized exactly like the SSO path — no separate user store.
+  let ok=false, errMsg='';
+  try{
+    const r = await fetch(LOGIN_URL + '/api/auth/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const d = await r.json().catch(()=>({}));
+    ok = r.ok && d && d.success;
+    if(!ok) errMsg = (d && d.error) || 'Invalid email or password';
+  }catch(e){ errMsg = 'Could not reach the login service'; }
+
   btn.disabled=false; btn.textContent='Sign In';
-  if(result && result.success){
+  if(ok){
     hideLoginModal();
     API_MODE=true;
-    await loadDataFromAPI();
+    updateAuthUI();
+    await loadDataFromAPI();      // authorized by the freshly-set shared cookie
     reloadFromLocalAndRender();
     updateApiStatus(true);
     updateAuthUI();
-    if(typeof toast==='function') toast('Signed in as '+result.user.name);
+    if(typeof toast==='function') toast('Signed in');
   } else {
-    errorEl.textContent=(result && result.error) || 'Login failed';
+    errorEl.textContent=errMsg;
     errorEl.style.display='block';
   }
 }

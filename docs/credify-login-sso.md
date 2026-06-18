@@ -11,8 +11,12 @@ the **separate** `anupammo/credify-login` repo.
   in `lib/auth.ts`, applied in `login`, `signup`, and the OAuth `callback` routes.
 - Clears the cookie with the **same domain** on `logout` (otherwise the browser
   won't remove a parent-domain cookie).
-- Adds **credentialed CORS** (`lib/cors.ts`) to `/api/auth/me` and `/api/auth/logout`
-  so `forms.credifyfast.com` can read the session and sign out cross-origin.
+- Adds **credentialed CORS** (`lib/cors.ts`) to `/api/auth/me`, `/api/auth/login`,
+  and `/api/auth/logout` so `forms.credifyfast.com` can read the session, **sign in
+  via the in-app popup against the credify-login user table**, and sign out — all
+  cross-origin. (The Form Builder's "Sign in" popup now POSTs to
+  `login.credifyfast.com/api/auth/login`, so it uses the SAME user table as SSO,
+  not the old chrome backend table.)
 
 ## Apply
 ```bash
