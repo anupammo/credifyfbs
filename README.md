@@ -987,6 +987,20 @@ GitHub Actions: deploy.yml
 | **Service Account** | `credify-run@` — roles: `Cloud SQL Client`, `Secret Manager Accessor` |
 | **VPC Connector** | Cloud Run → Cloud SQL private connectivity |
 
+### Frontend hosting — `forms.credifyfast.com`
+
+The builder runs as a **standalone web page** (no `chrome.*` APIs) served as a static file by
+the **host nginx** on the VM, alongside the API vhost. The wildcard cert `*.credifyfast.com`
+already covers it, and the API allows any origin (CORS `*`), so this origin needs **no cert,
+DNS, CORS, or code change** beyond publishing the file.
+
+- **Live now**, serving the builder. To ship a new build, copy `app.html` to the site's web
+  root on the VM (see [docker/nginx/forms.conf](docker/nginx/forms.conf) for the exact
+  discover-root + copy + verify steps). The HTML is served `no-cache`, so updates appear on the
+  next load.
+- `docker/nginx/forms.conf` documents the recommended server block if the vhost ever needs to
+  be recreated. The page calls the API at `https://chrome.credifyfast.com/api`.
+
 ---
 
 ## 12. Development Quickstart

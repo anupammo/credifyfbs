@@ -1908,6 +1908,22 @@
       return apiRequest('/auth/me');
     },
 
+    // Adopt a session handed off from the central login page (tokens arrive via
+    // the return URL). Stores the tokens, then fetches the user so isLoggedIn()
+    // becomes true. Returns { success, user }.
+    async adoptSession({ accessToken: at, refreshToken: rt } = {}) {
+      if (at) accessToken = at;
+      if (rt) refreshToken = rt;
+      saveTokens();
+      const me = await apiRequest('/auth/me');
+      if (me && me.user) {
+        currentApiUser = me.user;
+        saveTokens();
+        return { success: true, user: me.user };
+      }
+      return { success: false };
+    },
+
     isLoggedIn() {
       return !!accessToken && !!currentApiUser;
     },
@@ -21964,6 +21980,48 @@ function seedReportingSampleForms(){
 var API_MODE = false;
 var API_LOADING = false;
 
+/* ── Central login (SSO) ─────────────────────────────────────────────────────
+   The web app (forms.credifyfast.com) defers authentication to the central
+   login page. When there's no active session — or the user signs out — the web
+   app redirects to LOGIN_URL. The Chrome extension keeps its in-app modal +
+   offline mode (a hard redirect would break the sandboxed extension page).
+
+   Handoff contract: login.credifyfast.com authenticates, then redirects back to
+   this app with the JWT in the URL, e.g.
+     https://forms.credifyfast.com/#access_token=<JWT>&refresh_token=<token>
+   (query string also accepted; camelCase names tolerated). ingestSsoTokens()
+   reads them, stores the session, fetches the user, and strips them from the URL.
+   The outbound redirect passes ?redirect=<this-url> so login knows where to return. */
+var LOGIN_URL = 'https://login.credifyfast.com';
+
+function isWebApp(){ return location.protocol === 'http:' || location.protocol === 'https:'; }
+// Escape hatch for local/QA testing: ?offline=1 (or localStorage credify_offline=1)
+// keeps the in-app modal + offline mode on the web instead of redirecting.
+function offlineOptIn(){ try{ return /[?&]offline=1\b/.test(location.search) || localStorage.getItem('credify_offline')==='1'; }catch(e){ return false; } }
+function goToLogin(){
+  try{ sessionStorage.setItem('credify_login_bounce', String(Date.now())); }catch(e){}
+  var back = encodeURIComponent(location.origin + location.pathname);
+  location.replace(LOGIN_URL + '/?redirect=' + back);
+}
+// Loop guard: if we just came back from login WITHOUT a session (login not wired
+// yet, or auth failed), don't bounce again — fall back to the in-app modal.
+function justBouncedFromLogin(){
+  try{ var t = parseInt(sessionStorage.getItem('credify_login_bounce')||'0',10); return !!t && (Date.now()-t < 20000); }catch(e){ return false; }
+}
+// Adopt a session passed back from the central login page via the URL.
+async function ingestSsoTokens(){
+  try{
+    var raw = (location.hash||'').replace(/^#/,'') + '&' + (location.search||'').replace(/^\?/,'');
+    var p = new URLSearchParams(raw);
+    var at = p.get('access_token') || p.get('accessToken');
+    var rt = p.get('refresh_token') || p.get('refreshToken');
+    if(!at) return false;
+    var res = await CredifyAPI.adoptSession({ accessToken: at, refreshToken: rt });
+    try{ history.replaceState(null, '', location.origin + location.pathname); }catch(e){}
+    return !!(res && res.success);
+  }catch(e){ return false; }
+}
+
 // Pull users/forms/groups/blocks from the backend into localStorage. Mirrors
 // the proven mapping: list endpoints return metadata only, so each form's full
 // (decrypted) schema is fetched and spread back onto the rich client shape.
@@ -22148,6 +22206,9 @@ async function doLogout(){
   API_MODE=false;
   updateApiStatus(false);
   updateAuthUI();
+  // On the web, sign-out returns to the central login page; in the extension,
+  // fall back to the in-app modal.
+  if(isWebApp() && !offlineOptIn()){ goToLogin(); return; }
   if(typeof toast==='function') toast('Signed out');
   showLoginModal();
 }
@@ -22166,18 +22227,33 @@ function updateAuthUI(){
   if(typeof reserveTopbarSpace==='function'){ try{ reserveTopbarSpace(); }catch(e){} }
 }
 
-/* ── Entry: gate the (already-booted) app behind sign-in / offline ──────── */
-function _credifyInit(){
+/* ── Entry: gate the (already-booted) app behind sign-in ──────────────────────
+   Web app  → no session / sign-out redirects to the central login page.
+   Extension → keeps the in-app modal + offline mode. */
+async function _credifyInit(){
+  // Pick up a session handed back from the central login page, if present.
+  try{ await ingestSsoTokens(); }catch(e){}
+
   if(window.CredifyAPI && CredifyAPI.isLoggedIn()){
     API_MODE=true;
+    try{ sessionStorage.removeItem('credify_login_bounce'); }catch(e){}
     updateAuthUI();
     loadDataFromAPI().then(()=>{ reloadFromLocalAndRender(); updateApiStatus(true); updateAuthUI(); });
-  } else {
-    API_MODE=false;
-    updateApiStatus(false);
-    updateAuthUI();
-    showLoginModal();
+    return;
   }
+
+  // No active session.
+  if(isWebApp() && !offlineOptIn() && !justBouncedFromLogin()){
+    goToLogin();   // → login.credifyfast.com (returns here with the session)
+    return;
+  }
+
+  // Extension, explicit ?offline=1, or login bounced back without a session:
+  // show the in-app modal so the user is never stuck in a redirect loop.
+  API_MODE=false;
+  updateApiStatus(false);
+  updateAuthUI();
+  showLoginModal();
   // Enter-to-submit on the login fields.
   try{
     const p=document.getElementById('login-password');
