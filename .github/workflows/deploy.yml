@@ -92,6 +92,7 @@ jobs:
             --set-secrets JWT_REFRESH_SECRET=jwt-refresh-secret:latest \
             --set-secrets AES_MASTER_KEY=aes-key:latest \
             --set-secrets HMAC_SECRET=hmac-secret:latest \
+            --set-secrets CREDIFY_LOGIN_JWT_SECRET=credify-login-jwt-secret:latest \
             --min-instances 0 \
             --max-instances 5 \
             --memory 512Mi \

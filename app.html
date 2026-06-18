@@ -1832,6 +1832,7 @@
     try {
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken })
       });
@@ -1850,12 +1851,12 @@
 
   // Make authenticated API request
   async function apiRequest(endpoint, options = {}) {
-    // Check/refresh token if needed
-    if (isTokenExpired(accessToken)) {
-      const refreshed = await refreshAccessToken();
-      if (!refreshed && endpoint !== '/auth/login') {
-        return { error: 'Not authenticated', code: 'NOT_AUTHENTICATED' };
-      }
+    // If we hold a bearer session that's expired, refresh it. We never block the
+    // request for a MISSING token — SSO auth rides on the credify_token cookie,
+    // sent automatically via credentials:'include'. The server returns 401 if
+    // neither a valid bearer token nor a valid cookie is present.
+    if (accessToken && isTokenExpired(accessToken) && refreshToken) {
+      await refreshAccessToken();
     }
 
     const headers = {
@@ -1867,6 +1868,7 @@
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
+        credentials: 'include',   // send the shared .credifyfast.com SSO cookie
         headers
       });
       isOnline = true;
@@ -22001,7 +22003,17 @@ function offlineOptIn(){ try{ return /[?&]offline=1\b/.test(location.search) || 
 function goToLogin(){
   try{ sessionStorage.setItem('credify_login_bounce', String(Date.now())); }catch(e){}
   var back = encodeURIComponent(location.origin + location.pathname);
-  location.replace(LOGIN_URL + '/?redirect=' + back);
+  location.replace(LOGIN_URL + '/login?redirect=' + back);
+}
+// Check the credify-login session via its /me (cross-origin, credentialed). The
+// shared .credifyfast.com cookie is same-site so it's sent. Returns user or null.
+async function checkLoginSession(){
+  try{
+    const r = await fetch(LOGIN_URL + '/api/auth/me', { credentials: 'include', headers: { 'Accept': 'application/json' } });
+    if(!r.ok) return null;
+    const d = await r.json();
+    return (d && d.user) ? d.user : null;
+  }catch(e){ return null; }
 }
 // Loop guard: if we just came back from login WITHOUT a session (login not wired
 // yet, or auth failed), don't bounce again — fall back to the in-app modal.
@@ -22034,8 +22046,15 @@ async function loadDataFromAPI(){
       USERS = usersRes.users.map(u=>({ id:u.id, name:u.name, email:u.email, role:(u.role||'editor').toLowerCase() }));
       persistUsers();
     }
-    // Current user from the session
-    const apiUser = CredifyAPI.getCurrentUser();
+    // Current user from the session. Bearer mode has it in memory; cookie/SSO
+    // mode resolves it from chrome's /auth/me (authorized by the shared cookie).
+    let apiUser = CredifyAPI.getCurrentUser();
+    if(!apiUser){
+      const meRes = await CredifyAPI.getMe();
+      if(meRes && meRes.user){
+        apiUser = { id: meRes.user.id, name: meRes.user.name, email: meRes.user.email, role: (meRes.user.role||'editor').toLowerCase() };
+      }
+    }
     if(apiUser){
       CURRENT_USER_ID = apiUser.id;
       if(!USERS.find(u=>u.id===apiUser.id)){
@@ -22202,13 +22221,19 @@ function loginOffline(){
   if(typeof toast==='function') toast('Working offline — changes saved locally');
 }
 async function doLogout(){
+  // On the web, clear the shared credify-login cookie centrally, then return to
+  // the central login page. In the extension, fall back to the in-app modal.
+  if(isWebApp() && !offlineOptIn()){
+    try{ await fetch(LOGIN_URL + '/api/auth/logout', { method:'POST', credentials:'include' }); }catch(e){}
+    try{ await CredifyAPI.logout(); }catch(e){}   // also clear any bearer session
+    API_MODE=false; updateApiStatus(false); updateAuthUI();
+    goToLogin();
+    return;
+  }
   try{ await CredifyAPI.logout(); }catch(e){}
   API_MODE=false;
   updateApiStatus(false);
   updateAuthUI();
-  // On the web, sign-out returns to the central login page; in the extension,
-  // fall back to the in-app modal.
-  if(isWebApp() && !offlineOptIn()){ goToLogin(); return; }
   if(typeof toast==='function') toast('Signed out');
   showLoginModal();
 }
@@ -22234,18 +22259,24 @@ async function _credifyInit(){
   // Pick up a session handed back from the central login page, if present.
   try{ await ingestSsoTokens(); }catch(e){}
 
-  if(window.CredifyAPI && CredifyAPI.isLoggedIn()){
+  const enterApiMode = () => {
     API_MODE=true;
     try{ sessionStorage.removeItem('credify_login_bounce'); }catch(e){}
     updateAuthUI();
     loadDataFromAPI().then(()=>{ reloadFromLocalAndRender(); updateApiStatus(true); updateAuthUI(); });
-    return;
-  }
+  };
 
-  // No active session.
-  if(isWebApp() && !offlineOptIn() && !justBouncedFromLogin()){
-    goToLogin();   // → login.credifyfast.com (returns here with the session)
-    return;
+  // Existing bearer session (extension / previously signed in).
+  if(window.CredifyAPI && CredifyAPI.isLoggedIn()){ enterApiMode(); return; }
+
+  // Web: defer to the credify-login SSO session. If the shared cookie yields a
+  // user, sign in silently (data is authorized by that cookie). No sign-in here.
+  if(isWebApp() && !offlineOptIn()){
+    const ssoUser = await checkLoginSession();
+    if(ssoUser){ enterApiMode(); return; }
+    // Not signed in → go to the central login page (unless we just bounced back
+    // without a session, to avoid a redirect loop).
+    if(!justBouncedFromLogin()){ goToLogin(); return; }
   }
 
   // Extension, explicit ?offline=1, or login bounced back without a session:

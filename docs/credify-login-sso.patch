@@ -1,0 +1,223 @@
+diff --git a/app/api/auth/callback/[provider]/route.ts b/app/api/auth/callback/[provider]/route.ts
+index b8aeb39..8f3a8c7 100644
+--- a/app/api/auth/callback/[provider]/route.ts
++++ b/app/api/auth/callback/[provider]/route.ts
+@@ -1,6 +1,6 @@
+ import { NextRequest, NextResponse } from 'next/server';
+ import { prisma } from '@/lib/prisma';
+-import { generateToken } from '@/lib/auth';
++import { generateToken, cookieOptions, AUTH_COOKIE } from '@/lib/auth';
+ import {
+   getProviderConfig,
+   exchangeCodeForTokens,
+@@ -65,13 +65,7 @@ export async function GET(
+ 
+     const token = generateToken(user.id, user.email);
+     const response = NextResponse.redirect(appUrl('/dashboard'));
+-    response.cookies.set('credify_token', token, {
+-      httpOnly: true,
+-      secure: process.env.NODE_ENV === 'production',
+-      sameSite: 'lax',
+-      maxAge: 24 * 60 * 60,
+-      path: '/',
+-    });
++    response.cookies.set(AUTH_COOKIE, token, cookieOptions(24 * 60 * 60));
+     response.cookies.delete('oauth_state');
+     return response;
+   } catch (error) {
+diff --git a/app/api/auth/login/route.ts b/app/api/auth/login/route.ts
+index 85c9f4a..cdcfad7 100644
+--- a/app/api/auth/login/route.ts
++++ b/app/api/auth/login/route.ts
+@@ -1,6 +1,6 @@
+ import { NextRequest, NextResponse } from 'next/server';
+ import { prisma } from '@/lib/prisma';
+-import { verifyPassword, generateToken } from '@/lib/auth';
++import { verifyPassword, generateToken, cookieOptions, AUTH_COOKIE } from '@/lib/auth';
+ 
+ export async function POST(req: NextRequest) {
+   try {
+@@ -24,13 +24,7 @@ export async function POST(req: NextRequest) {
+ 
+     const token = generateToken(user.id, user.email, remember);
+     const response = NextResponse.json({ success: true });
+-    response.cookies.set('credify_token', token, {
+-      httpOnly: true,
+-      secure: process.env.NODE_ENV === 'production',
+-      sameSite: 'lax',
+-      maxAge: remember ? 30 * 24 * 60 * 60 : 24 * 60 * 60,
+-      path: '/',
+-    });
++    response.cookies.set(AUTH_COOKIE, token, cookieOptions(remember ? 30 * 24 * 60 * 60 : 24 * 60 * 60));
+     return response;
+   } catch (error) {
+     console.error('Login error:', error);
+diff --git a/app/api/auth/logout/route.ts b/app/api/auth/logout/route.ts
+index 545d649..e6a4583 100644
+--- a/app/api/auth/logout/route.ts
++++ b/app/api/auth/logout/route.ts
+@@ -1,7 +1,15 @@
+-import { NextResponse } from 'next/server';
++import { NextRequest, NextResponse } from 'next/server';
++import { cookieOptions, AUTH_COOKIE } from '@/lib/auth';
++import { withCors, corsPreflight } from '@/lib/cors';
+ 
+-export async function POST() {
++export async function OPTIONS(req: NextRequest) {
++  return corsPreflight(req);
++}
++
++export async function POST(req: NextRequest) {
+   const response = NextResponse.json({ success: true });
+-  response.cookies.set('credify_token', '', { httpOnly: true, maxAge: 0, path: '/' });
+-  return response;
+-}
+\ No newline at end of file
++  // Clear with the SAME attributes (incl. domain) used when setting — otherwise
++  // the browser won't remove the parent-domain cookie.
++  response.cookies.set(AUTH_COOKIE, '', cookieOptions(0));
++  return withCors(response, req);
++}
+diff --git a/app/api/auth/me/route.ts b/app/api/auth/me/route.ts
+index 50167ce..f3ebc04 100644
+--- a/app/api/auth/me/route.ts
++++ b/app/api/auth/me/route.ts
+@@ -1,13 +1,18 @@
+ import { NextRequest, NextResponse } from 'next/server';
+ import { prisma } from '@/lib/prisma';
+-import { verifyToken } from '@/lib/auth';
++import { verifyToken, AUTH_COOKIE } from '@/lib/auth';
++import { withCors, corsPreflight } from '@/lib/cors';
++
++export async function OPTIONS(req: NextRequest) {
++  return corsPreflight(req);
++}
+ 
+ export async function GET(req: NextRequest) {
+-  const token = req.cookies.get('credify_token')?.value;
+-  if (!token) return NextResponse.json({ user: null });
++  const token = req.cookies.get(AUTH_COOKIE)?.value;
++  if (!token) return withCors(NextResponse.json({ user: null }), req);
+ 
+   const payload = await verifyToken(token);
+-  if (!payload) return NextResponse.json({ user: null });
++  if (!payload) return withCors(NextResponse.json({ user: null }), req);
+ 
+   const user = await prisma.user.findUnique({
+     where: { id: payload.userId },
+@@ -23,5 +28,5 @@ export async function GET(req: NextRequest) {
+     },
+   });
+ 
+-  return NextResponse.json({ user });
++  return withCors(NextResponse.json({ user }), req);
+ }
+\ No newline at end of file
+diff --git a/app/api/auth/signup/route.ts b/app/api/auth/signup/route.ts
+index a02f527..cfcf93d 100644
+--- a/app/api/auth/signup/route.ts
++++ b/app/api/auth/signup/route.ts
+@@ -1,6 +1,6 @@
+ import { NextRequest, NextResponse } from 'next/server';
+ import { prisma } from '@/lib/prisma';
+-import { hashPassword, normalizePhone, validatePassword, isValidEmail, generateToken } from '@/lib/auth';
++import { hashPassword, normalizePhone, validatePassword, isValidEmail, generateToken, cookieOptions, AUTH_COOKIE } from '@/lib/auth';
+ 
+ export async function POST(req: NextRequest) {
+   try {
+@@ -64,13 +64,7 @@ export async function POST(req: NextRequest) {
+       success: true,
+       user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+     });
+-    response.cookies.set('credify_token', token, {
+-      httpOnly: true,
+-      secure: process.env.NODE_ENV === 'production',
+-      sameSite: 'lax',
+-      maxAge: 24 * 60 * 60,
+-      path: '/',
+-    });
++    response.cookies.set(AUTH_COOKIE, token, cookieOptions(24 * 60 * 60));
+     return response;
+   } catch (error) {
+     console.error('Signup error:', error);
+diff --git a/lib/auth.ts b/lib/auth.ts
+index 01a3170..14501c5 100644
+--- a/lib/auth.ts
++++ b/lib/auth.ts
+@@ -4,6 +4,27 @@ import jwt from 'jsonwebtoken';
+ const JWT_SECRET = process.env.JWT_SECRET!;
+ const SALT_ROUNDS = 10;
+ 
++export const AUTH_COOKIE = 'credify_token';
++
++/**
++ * Options for the session cookie. In production it is scoped to the parent
++ * domain (`.credifyfast.com`) so sibling apps (forms.credifyfast.com,
++ * chrome.credifyfast.com) receive it and can run SSO. `COOKIE_DOMAIN` lets you
++ * override per environment. On localhost the cookie stays host-only.
++ */
++export function cookieOptions(maxAgeSeconds: number) {
++  const prod = process.env.NODE_ENV === 'production';
++  const domain = process.env.COOKIE_DOMAIN || (prod ? '.credifyfast.com' : undefined);
++  return {
++    httpOnly: true,
++    secure: prod,
++    sameSite: 'lax' as const,
++    maxAge: maxAgeSeconds,
++    path: '/',
++    ...(domain ? { domain } : {}),
++  };
++}
++
+ export type JWTPayload = {
+   userId: string;
+   email: string;
+diff --git a/lib/cors.ts b/lib/cors.ts
+new file mode 100644
+index 0000000..db5f414
+--- /dev/null
++++ b/lib/cors.ts
+@@ -0,0 +1,43 @@
++import { NextResponse } from 'next/server';
++import type { NextRequest } from 'next/server';
++
++/**
++ * Credentialed CORS for cross-origin SSO callers (forms.credifyfast.com checking
++ * /api/auth/me and calling /api/auth/logout with the shared cookie). Credentialed
++ * requests cannot use `*` — we reflect an allowlisted origin and set
++ * Access-Control-Allow-Credentials.
++ */
++const STATIC_ALLOWED = [
++  'https://forms.credifyfast.com',
++  'https://chrome.credifyfast.com',
++];
++
++function isAllowed(origin: string): boolean {
++  if (!origin) return false;
++  if (STATIC_ALLOWED.includes(origin)) return true;
++  if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
++  if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) return true;
++  const extra = (process.env.SSO_ALLOWED_ORIGINS || '')
++    .split(',')
++    .map((s) => s.trim())
++    .filter(Boolean);
++  return extra.includes(origin);
++}
++
++/** Apply credentialed CORS headers to a response, reflecting an allowlisted origin. */
++export function withCors<T extends NextResponse>(res: T, req: NextRequest): T {
++  const origin = req.headers.get('origin') || '';
++  if (isAllowed(origin)) {
++    res.headers.set('Access-Control-Allow-Origin', origin);
++    res.headers.set('Access-Control-Allow-Credentials', 'true');
++    res.headers.append('Vary', 'Origin');
++  }
++  res.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
++  res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Accept');
++  return res;
++}
++
++/** Standard preflight response for the SSO endpoints. */
++export function corsPreflight(req: NextRequest): NextResponse {
++  return withCors(new NextResponse(null, { status: 204 }), req);
++}

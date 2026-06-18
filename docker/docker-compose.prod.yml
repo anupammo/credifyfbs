@@ -34,6 +34,9 @@ services:
       JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-30d}
       AES_MASTER_KEY: ${AES_MASTER_KEY}
       HMAC_SECRET: ${HMAC_SECRET}
+      # SSO: must equal the credify-login app's JWT_SECRET (validates its cookie).
+      CREDIFY_LOGIN_JWT_SECRET: ${CREDIFY_LOGIN_JWT_SECRET}
+      SSO_ALLOWED_ORIGINS: ${SSO_ALLOWED_ORIGINS:-}
       NODE_ENV: production
     ports:
       # Kept exposed so the legacy http://35.255.131.130:3000 endpoint still

@@ -1,36 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAccessToken, type AccessTokenPayload } from "@/lib/auth/jwt";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Credify-Signature",
-};
+import { verifyLoginCookie, resolveSsoUser } from "@/lib/auth/sso";
 
 export type AuthedRequest = NextRequest & { user: AccessTokenPayload };
 
 type Handler = (req: AuthedRequest, ctx: { params: Record<string, string> }) => Promise<NextResponse>;
 
+const unauthorized = (code: string) =>
+  NextResponse.json({ error: "Unauthorized", code }, { status: 401 });
+
+/**
+ * Authorize a request by EITHER:
+ *  1. a Bearer access token (extension / offline clients), or
+ *  2. the credify-login `credify_token` cookie (SSO from login.credifyfast.com),
+ *     validated with the shared secret and mapped/provisioned to a local user.
+ * Either path yields the same `req.user` (AccessTokenPayload), so downstream
+ * routes are unchanged. CORS — including OPTIONS preflight — is handled centrally
+ * in middleware.ts.
+ */
 export function withAuth(handler: Handler) {
   return async (req: NextRequest, ctx: { params: Promise<Record<string, string>> }) => {
-    // Handle preflight
-    if (req.method === "OPTIONS") {
-      return new NextResponse(null, { status: 204, headers: corsHeaders });
-    }
+    const run = async (user: AccessTokenPayload) => {
+      (req as AuthedRequest).user = user;
+      return handler(req as AuthedRequest, { params: await ctx.params });
+    };
 
+    // 1) Bearer access token.
     const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized", code: "MISSING_TOKEN" }, { status: 401, headers: corsHeaders });
+    if (authHeader?.startsWith("Bearer ")) {
+      try {
+        return await run(verifyAccessToken(authHeader.slice(7)));
+      } catch {
+        return unauthorized("INVALID_TOKEN");
+      }
     }
 
-    const token = authHeader.slice(7);
-    try {
-      const payload = verifyAccessToken(token);
-      (req as AuthedRequest).user = payload;
-      const resolvedCtx = { params: await ctx.params };
-      return handler(req as AuthedRequest, resolvedCtx);
-    } catch {
-      return NextResponse.json({ error: "Unauthorized", code: "INVALID_TOKEN" }, { status: 401, headers: corsHeaders });
+    // 2) credify-login SSO cookie.
+    const loginPayload = verifyLoginCookie(req.cookies.get("credify_token")?.value);
+    if (loginPayload) {
+      try {
+        return await run(await resolveSsoUser(loginPayload));
+      } catch {
+        return unauthorized("SSO_RESOLVE_FAILED");
+      }
     }
+
+    return unauthorized("MISSING_TOKEN");
   };
 }
