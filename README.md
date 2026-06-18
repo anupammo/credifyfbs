@@ -2,7 +2,9 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Version](https://img.shields.io/badge/Extension-v1.2.0-green)](./manifest.json)
+[![Branch](https://img.shields.io/badge/Branch-v4-green)](./manifest.json)
+[![UI](https://img.shields.io/badge/UI-Merged_Prototype-teal)](./app.html)
+[![Integration](https://img.shields.io/badge/Backend-Wired_(CredifyAPI)-brightgreen)](#10-extension--backend-integration)
 [![Backend](https://img.shields.io/badge/Backend-Next.js_16-black)](./backend)
 [![DB](https://img.shields.io/badge/Database-PostgreSQL_16-blue)](./backend/prisma)
 [![Deploy](https://img.shields.io/badge/Deploy-GCP_Cloud_Run-orange)](./infra)
@@ -42,6 +44,16 @@
 - **Export** to JSON, HTML, and PDF
 
 **v1.0** stores all data locally in `chrome.storage.local`. **v1.1** migrates to a centralised PostgreSQL backend with real authentication, end-to-end encryption, and GCP deployment — enabling true team collaboration, audit logging, and data governance compliance.
+
+> ### 🆕 v4 (current branch) — New Prototype UI + Live Backend Wiring
+> The builder has been rebuilt on the new **merged design prototype** — a superset of the
+> previous builder (System Forms library, bundles/packets, reports, contacts directory,
+> delivery channels, cross-form autofill, expanded field types, filled-PDF export, undo/redo,
+> field numbering, device-adaptive date/time & searchable pickers) — and the production
+> backend is now **wired directly into `app.html`** through `window.CredifyAPI` (JWT auth,
+> offline-first sync). A top-right **account bar** (Alerts · Responses · Admin · Sign out) was
+> added. See [§10 Integration](#10-extension--backend-integration) and the
+> **v4** entry in [§14 Roadmap](#14-roadmap) for the full change log.
 
 ---
 
@@ -797,12 +809,38 @@ Request ──▶ withAuth middleware (verify JWT)
 
 ### Strategy
 
-The extension operates in a **hybrid mode** in v1.1:
+The extension operates in a **hybrid, offline-first mode**:
 
-1. **Online mode** — API is reachable → all reads/writes go to the backend. Local `chrome.storage.local` acts as a write-through cache for offline resilience.
-2. **Offline mode** — API unreachable → continue with cached data; queue writes and sync on reconnect.
+1. **Online mode** — signed in (valid JWT) → data is pulled from the backend into localStorage on load and every form/block change is mirrored back to the API. localStorage remains the working store (offline cache).
+2. **Offline mode** — "Work Offline" or no session → the builder runs entirely on localStorage; API calls are inert until the next sign-in.
 
-### ApiClient (background.js)
+### v4 implementation — `window.CredifyAPI` inside `app.html` (current)
+
+As of **v4**, the backend client lives **directly in the sandboxed `app.html`** rather than being mediated by `background.js`. The sandbox CSP (`connect-src https://chrome.credifyfast.com …`) permits the `fetch` calls, and the API responds with permissive CORS, so the builder talks to the backend over HTTPS without a host-page relay.
+
+**Boot & auth flow**
+```
+app.html loads
+  ├─ CredifyAPI IIFE  → loads stored JWT from credify_auth_tokens
+  ├─ builder boots offline-first against localStorage (instant render)
+  └─ _credifyInit()
+        ├─ signed in?  → loadDataFromAPI() → reloadFromLocalAndRender()  → "● Connected"
+        └─ not signed? → show Login modal  → [Sign In]  or  [Work Offline] → "● Offline"
+```
+
+**Key bridge functions (in `app.html`)**
+
+| Function | Role |
+|----------|------|
+| `window.CredifyAPI` | JWT client: `login/logout/me/refresh` + CRUD for `forms/users/groups/blocks` + `shareForm` |
+| `loadDataFromAPI()` | Pulls users/forms/groups/blocks into localStorage; hydrates the rich form shape by spreading the decrypted `schema` back onto each form |
+| `saveFormToAPI()` | Debounced (2 s) save; serializes the **whole** form into the encrypted `schema` blob (+ separate `scoringSections`) so new field types / page rules / numbering / autofill round-trip with **no DB migration** |
+| `reloadFromLocalAndRender()` | Re-reads collections after an API sync and re-opens the last/visible form |
+| `_credifyInit` / `doLogin` / `loginOffline` / `doLogout` | Login gate + offline mode + session controls (the top-right **Sign out**) |
+
+**Sync scope (Phase 1)** — Forms (create/update/delete) and Blocks (create/delete) write through to the API, with localStorage fallback when offline. Users/Groups/Shares are **pulled read-only** on login; full write-sync (server-id reconciliation, password-collecting invite UI) and backend tables for the new entities (Contacts, Reports, Bundles, Delivery, System-form overrides) are deferred to a later phase.
+
+### ApiClient (background.js) — earlier host-mediated sketch (superseded by the in-app client above)
 
 ```javascript
 // background.js — conceptual sketch
@@ -1124,6 +1162,29 @@ hmac-secret       → HMAC_SECRET
 
 ## 14. Roadmap
 
+### v4 — New Prototype UI + Live Backend Integration ✅ Complete (current branch)
+
+Merges the new design prototype with the existing Next.js / Prisma / PostgreSQL backend.
+**No builder feature was lost** — the prototype is a superset of the previous builder.
+
+**UI / UX**
+- [x] Rebuilt `app.html` on the new merged design prototype (forest-green design system unchanged)
+- [x] New builder capabilities: System Forms library (PHQ-9, GAD-7, PCL-5, AUDIT, DAST-10, C-SSRS…), bundles/packets, reports & analytics, contacts directory, delivery channels (link / SMS / email / fax / portal), cross-form autofill, expanded field types (address, date-time, matrix/scale, signature, progress…), filled-PDF export (html2pdf), undo/redo, field numbering, device-adaptive date/time & searchable dropdowns
+- [x] Top-right **account bar** — Alerts · Responses · Admin (admin-only) · Sign out
+
+**Backend integration (grafted into `app.html`)**
+- [x] `window.CredifyAPI` JWT client (auth + forms/users/groups/blocks/share CRUD; access + rotating refresh tokens)
+- [x] Removed the broken stub pre-boot (sync `/api/me` redirect) and the dead `/api/forms/sync` cloud bridge
+- [x] Offline-first boot + JWT **login gate** with a "Work Offline" mode; online/offline status pill
+- [x] `loadDataFromAPI()` — pulls users/forms/groups/blocks into localStorage and hydrates the rich form shape
+- [x] `saveFormToAPI()` — debounced; serializes the **whole** form schema into the encrypted `schema` blob, so all new fields round-trip with **no DB migration**
+- [x] Forms (create/update/delete) and Blocks (create/delete) synced to the API; localStorage fallback offline
+- [x] Verified live against production: `login` + `/auth/me` + `forms/users/groups/blocks` return real DB data; CORS open
+
+**Deferred to a later phase**
+- [ ] Full write-sync for Users (needs a password-collecting invite UI) and Groups/Shares server-id reconciliation — currently pulled read-only on login, local-first for writes
+- [ ] Backend tables + routes for the new entities (Contacts, Reports, Bundles, Delivery, System-form overrides) — currently localStorage-only
+
 ### v1.0 — Local Extension ✅ Complete
 
 - [x] MV3 Chrome Extension with sandboxed `app.html` builder
@@ -1208,10 +1269,12 @@ Instrument Serif + Sora load from Google Fonts. The sandbox CSP allows `https://
 
 ---
 
-**Version** 1.2.0 (Full Stack — GCP Deployment Ready)  
+**Version** v4 (New Prototype UI + Live Backend Integration)  
 **Maintainer** Credify Internal Engineering  
-**Branch** `v1.2` · MV3 · Chrome / Edge / Brave / Opera 
+**Branch** `v4` · MV3 · Chrome / Edge / Brave / Opera 
 
 ---
 
-This is the ready to deploy version tested in local successfully
+The new merged-prototype builder is wired to the live Next.js/Prisma/PostgreSQL backend via
+`window.CredifyAPI` (JWT, offline-first). Verified end-to-end against production with the seeded
+`admin@credify.internal` account; offline mode works with no backend.
