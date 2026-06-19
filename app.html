@@ -3143,6 +3143,9 @@ select.addr-part{appearance:auto;-webkit-appearance:auto;height:auto;min-height:
 .user-menu-item .um-role{font-size:10.5px;color:var(--text-muted-2);text-transform:capitalize}
 .user-menu-item .um-info{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
 .user-menu-item .um-check{margin-left:auto;color:var(--green-primary);font-weight:700;font-size:14px}
+/* Active (logged-in) user shown read-only: no switching, so kill the pointer/hover swap. */
+.user-menu-item.current{cursor:default}
+.user-menu-item.current:hover{background:var(--mint-pale-2)}
 .user-menu-divider{height:1px;background:var(--border);margin:5px 2px}
 .user-menu-action{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text-main);transition:background .1s}
 .user-menu-action:hover{background:var(--surface)}
@@ -17431,18 +17434,19 @@ function renderUserChip(){
 function renderUserMenu(){
   const u=currentUser();
   const menu=document.getElementById('user-menu');
-  let html=`<div class="user-menu-h">Switch user</div>`;
-  USERS.forEach(usr=>{
-    const active=usr.id===CURRENT_USER_ID;
-    html+=`<div class="user-menu-item${active?' active':''}" onclick="switchUser('${usr.id}')">
-      <div class="user-avatar sm">${esc(initialsFor(usr.name))}</div>
+  // Switch-user (impersonation) list is disabled for now. The menu shows only the
+  // active/logged-in user — sourced from the backend session (CURRENT_USER_ID set
+  // by SSO/cookie/bearer in loadDataFromAPI), so it stays correct against the DB.
+  let html=`<div class="user-menu-h">Signed in</div>`;
+  if(u){
+    html+=`<div class="user-menu-item active current" aria-current="true">
+      <div class="user-avatar sm">${esc(initialsFor(u.name))}</div>
       <div class="um-info">
-        <span class="um-name">${esc(usr.name)}</span>
-        <span class="um-role">${esc(usr.role)}</span>
+        <span class="um-name">${esc(u.name)}</span>
+        <span class="um-role">${esc(u.role)}</span>
       </div>
-      ${active?'<span class="um-check">✓</span>':''}
     </div>`;
-  });
+  }
   // Admins get a "Manage users" entry in the same menu — keeps the entry point
   // discoverable without cluttering the topbar for non-admins.
   if(isAdmin()){
