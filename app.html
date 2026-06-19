@@ -22061,12 +22061,19 @@ function goToLogin(){
 // Check the credify-login session via its /me (cross-origin, credentialed). The
 // shared .credifyfast.com cookie is same-site so it's sent. Returns user or null.
 async function checkLoginSession(){
+  // Returns the user object if signed in, null if confirmed NOT signed in, or the
+  // string 'error' if the login service couldn't be reached (timeout / network /
+  // 5xx). The timeout is critical: without it a slow/restarting login service
+  // leaves the gate frozen on "Checking your sign-in…" forever.
+  var ctrl = new AbortController();
+  var timer = setTimeout(function(){ ctrl.abort(); }, 7000);
   try{
-    const r = await fetch(LOGIN_URL + '/api/auth/me', { credentials: 'include', headers: { 'Accept': 'application/json' } });
-    if(!r.ok) return null;
-    const d = await r.json();
+    const r = await fetch(LOGIN_URL + '/api/auth/me', { credentials: 'include', headers: { 'Accept': 'application/json' }, signal: ctrl.signal });
+    if(!r.ok) return r.status >= 500 ? 'error' : null;
+    const d = await r.json().catch(function(){ return null; });
     return (d && d.user) ? d.user : null;
-  }catch(e){ return null; }
+  }catch(e){ return 'error'; }
+  finally{ clearTimeout(timer); }
 }
 // Adopt a session passed back from the central login page via the URL.
 async function ingestSsoTokens(){
@@ -22372,6 +22379,7 @@ async function _credifyInit(){
   // Confirmed central-login session → sign in silently. Otherwise redirect to
   // login.credifyfast.com (NO in-app popup, ever). The gate stays up meanwhile.
   const ssoUser = await checkLoginSession();
+  if(ssoUser === 'error'){ showGateError(); return; }   // login service unreachable → show a manual "Sign in" link, never freeze
   if(ssoUser){ enterApiMode(); return; }
   goToLogin();
 }
