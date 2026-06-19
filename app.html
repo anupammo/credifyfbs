@@ -17204,6 +17204,11 @@ function loadUsers(){
 function persistUsers(){ try{ localStorage.setItem(USERS_KEY, JSON.stringify(USERS)); }catch(e){} }
 function persistCurrentUser(){ try{ localStorage.setItem(CURRENT_USER_KEY, CURRENT_USER_ID||''); }catch(e){} }
 
+/* The bundled demo roster (Alex/Erin/Sam/Vera) uses placeholder @credify.dev
+   emails. On the WEB (SSO) build the backend is the only source of truth, so we
+   identify these by email to strip any stale copy and never show them there. */
+function isDemoUser(u){ return !!u && typeof u.email==='string' && /@credify\.dev$/i.test(u.email); }
+
 /* Seed an initial roster if none exists. Putting the admin first means
    first-load users land in admin mode and can immediately try everything. */
 function seedDefaultUsers(){
@@ -20200,10 +20205,18 @@ seedDemoBlocks(); // demo blocks of random prefillable fields (idempotent, versi
 renderFieldsTab();
 renderBlocksTab();
 
-// Load users — seed a default roster on the very first run so the demo has
-// someone to be. Persist immediately so the seeded ids stay stable.
+// Load users. On the WEB (SSO) build the backend is the only source of truth:
+// never seed the local demo roster (it would mask the signed-in account), and
+// strip any demo users left in localStorage from an earlier offline visit so a
+// real session can't be shadowed. The extension/offline demo still seeds a
+// default roster so it has someone to be.
 USERS = loadUsers() || [];
-if(!USERS.length){ seedDefaultUsers(); }
+if(isWebApp() && !offlineOptIn()){
+  const cleaned = USERS.filter(u=>!isDemoUser(u));
+  if(cleaned.length!==USERS.length){ USERS = cleaned; persistUsers(); }
+} else if(!USERS.length){
+  seedDefaultUsers();
+}
 CLIENTS = loadClients() || [];
 if(!CLIENTS.length){ seedDefaultClients(); }
 // Clinical roles / disciplines (SUD, Psychotherapy, …) — seed once on first run.
@@ -20217,7 +20230,8 @@ try{
   const lastUid=localStorage.getItem(CURRENT_USER_KEY);
   if(lastUid && USERS.some(u=>u.id===lastUid)) CURRENT_USER_ID=lastUid;
 }catch(e){}
-if(!CURRENT_USER_ID) CURRENT_USER_ID=USERS[0].id;
+// USERS[0] is undefined on the web before SSO populates the roster — guard it.
+if(!CURRENT_USER_ID && USERS[0]) CURRENT_USER_ID=USERS[0].id;
 renderUserChip();
 
 // Load the forms collection
@@ -22101,6 +22115,17 @@ async function loadDataFromAPI(){
       if(!USERS.find(u=>u.id===apiUser.id)){
         USERS.unshift({ id:apiUser.id, name:apiUser.name, email:apiUser.email, role:(apiUser.role||'editor').toLowerCase() });
       }
+      // Persist the resolved SSO identity so a page refresh restores it from the
+      // DB-backed roster without re-hitting the API (and never defaults elsewhere).
+      persistUsers();
+      persistCurrentUser();
+    } else if(isWebApp() && !offlineOptIn()){
+      // A confirmed SSO session exists, yet the builder API won't resolve the
+      // signed-in user (cookie not reaching this origin, or a JWT-secret / CORS
+      // mismatch). Surface it instead of silently falling back to a demo/default
+      // identity — otherwise the menu would show the wrong account.
+      console.error('SSO session present but /auth/me did not resolve a user');
+      if(typeof toast==='function') toast('Signed in, but your account could not be loaded from the server.');
     }
     // Forms — fetch each detail to restore the full schema, then hydrate the
     // rich client shape by spreading `schema` (server columns win over copies).
