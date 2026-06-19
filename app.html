@@ -1930,6 +1930,13 @@
       return !!accessToken && !!currentApiUser;
     },
 
+    // Drop any locally-stored bearer session WITHOUT calling the API. Used on the
+    // web, where the real session is the shared cookie — a leftover bearer token
+    // must never masquerade as a live session.
+    clearLocalSession() {
+      clearTokens();
+    },
+
     getCurrentUser() {
       return currentApiUser;
     },
@@ -22283,8 +22290,14 @@ async function _credifyInit(){
     loadDataFromAPI().then(()=>{ reloadFromLocalAndRender(); updateApiStatus(true); updateAuthUI(); });
   };
 
-  // Existing bearer session (extension / previously signed in).
-  if(window.CredifyAPI && CredifyAPI.isLoggedIn()){ enterApiMode(); return; }
+  // The EXTENSION carries its own bearer session; the WEB app's only source of
+  // truth is the shared login cookie. So on the web, a leftover bearer token in
+  // localStorage must NOT count as a session — drop it and defer to the cookie.
+  if(!isWebApp()){
+    if(window.CredifyAPI && CredifyAPI.isLoggedIn()){ enterApiMode(); return; }
+  } else if(window.CredifyAPI && CredifyAPI.clearLocalSession){
+    CredifyAPI.clearLocalSession();
+  }
 
   // Web: defer to the credify-login SSO session. If the shared cookie yields a
   // user, sign in silently (data is authorized by that cookie). No sign-in here.

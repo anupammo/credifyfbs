@@ -31,7 +31,8 @@ export function withAuth(handler: Handler) {
       try {
         return await run(verifyAccessToken(authHeader.slice(7)));
       } catch {
-        return unauthorized("INVALID_TOKEN");
+        // Invalid/expired bearer — fall through to the cookie. The web app may
+        // carry a stale token in localStorage while its real session is the cookie.
       }
     }
 
