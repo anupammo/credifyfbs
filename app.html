@@ -20863,7 +20863,7 @@ GROUPS = loadGroups() || [];
 const firstAdmin=USERS.find(u=>u.role==='admin')||USERS[0];
 let backfilled=false;
 FORMS.forEach(f=>{
-  if(!f.ownerId){ f.ownerId=firstAdmin.id; backfilled=true; }
+  if(!f.ownerId && firstAdmin){ f.ownerId=firstAdmin.id; backfilled=true; }
   if(!f.shares) f.shares=[];
   // Initialize scoring container so iteration/access elsewhere never hits
   // undefined on legacy forms saved before scoring shipped.
@@ -20883,7 +20883,7 @@ try{
       old.id=old.id||uid('form');
       old.updatedAt=old.updatedAt||Date.now();
       if(!old.weightGroups) old.weightGroups=[];
-      if(!old.ownerId) old.ownerId=firstAdmin.id;
+      if(!old.ownerId && firstAdmin) old.ownerId=firstAdmin.id;
       if(!old.shares) old.shares=[];
       FORMS.push(old);
       persistForms();
