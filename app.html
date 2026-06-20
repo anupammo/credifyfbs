@@ -6092,7 +6092,7 @@ function pageOf(row){ return row && row.page ? row.page : 1; }
    row, but at least 1. */
 function pageCount(){
   let max=1;
-  FORM.rows.forEach(r=>{ const p=pageOf(r); if(p>max) max=p; });
+  (FORM.rows||[]).forEach(r=>{ const p=pageOf(r); if(p>max) max=p; });
   return max;
 }
 
@@ -19391,6 +19391,7 @@ function loadFormIntoEditor(id, silent){
     return;
   }
   FORM=JSON.parse(JSON.stringify(f));
+  if(!Array.isArray(FORM.rows)) FORM.rows=[];   // legacy/corrupt saved forms may lack rows; keep render paths (pageCount etc.) safe
   if(!FORM.weightGroups) FORM.weightGroups=[];
   if(!FORM.shares) FORM.shares=[];
   if(typeof ensureScoringInit==='function') ensureScoringInit(); else { if(!FORM.scoringGroups) FORM.scoringGroups=[]; FORM.scoringSections=FORM.scoringGroups; }
@@ -20994,7 +20995,16 @@ if(!toOpen){
 }
 
 if(toOpen){
-  loadFormIntoEditor(toOpen, true);
+  try{
+    loadFormIntoEditor(toOpen, true);
+  }catch(e){
+    // A corrupt saved form must NEVER halt boot — that would stop the script
+    // before _credifyInit() runs and freeze the sign-in gate forever. Log and
+    // fall back to a blank canvas; on the web the real forms reload from the
+    // backend right after sign-in anyway.
+    console.error('Failed to open last form on boot; starting blank:', e);
+    try{ if(typeof scaffoldEmptyForm==='function') scaffoldEmptyForm(); }catch(_){}
+  }
 } else if(canCreateForms()) {
   // First run for an admin/editor: start with a seeded demo so the canvas
   // isn't bare and the user can immediately try out drag-and-drop.
