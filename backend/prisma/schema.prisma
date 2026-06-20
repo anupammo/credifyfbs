@@ -89,6 +89,8 @@ model Form {
   organization Organization @relation(fields: [organizationId], references: [id])
   group        Group?       @relation(fields: [groupId], references: [id])
   shares       FormShare[]
+  shareLinks   ShareLink[]
+  submissions  Submission[]
   auditLogs    AuditLog[]
 
   @@index([organizationId])
@@ -151,4 +153,51 @@ model AuditLog {
   @@index([userId])
   @@index([entityId])
   @@index([formId])
+}
+
+// Public share link for a form. `token` is the random value in the /f/<token>
+// URL. The rendered fillable form HTML is snapshotted and AES-256-GCM encrypted
+// at rest (htmlEnc/htmlIv/htmlTag), so a leaked DB snapshot never exposes it.
+// kind: "public" = open link (Copy share URL); "single" = per-patient link.
+model ShareLink {
+  id             String    @id @default(cuid())
+  token          String    @unique
+  formId         String
+  organizationId String
+  kind           String    @default("public")
+  label          String?
+  htmlEnc        Bytes
+  htmlIv         String
+  htmlTag        String
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  usedAt         DateTime?
+  createdById    String
+  createdAt      DateTime  @default(now())
+
+  form        Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+
+  @@index([formId])
+  @@index([organizationId])
+}
+
+// A submitted (filled) form response. Answers are PHI, so the payload is
+// AES-256-GCM encrypted at rest (dataEnc/dataIv/dataTag), exactly like the form
+// schema. Linked to the share link it came through (if any).
+model Submission {
+  id             String   @id @default(cuid())
+  formId         String
+  shareLinkId    String?
+  organizationId String
+  dataEnc        Bytes
+  dataIv         String
+  dataTag        String
+  createdAt      DateTime @default(now())
+
+  form      Form       @relation(fields: [formId], references: [id], onDelete: Cascade)
+  shareLink ShareLink? @relation(fields: [shareLinkId], references: [id])
+
+  @@index([formId])
+  @@index([shareLinkId])
 }

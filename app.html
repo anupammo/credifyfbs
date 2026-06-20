@@ -13706,10 +13706,15 @@ function confirmDialogRespond(yes){
 function shEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function copyText(t){ try{ navigator.clipboard.writeText(t); }catch(e){ var ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); }catch(_){ } document.body.removeChild(ta); } }
 function copyShare(id){ var el=document.getElementById(id); copyText(el.value||el.textContent); toast('Copied'); }
+// Share/link endpoints live on the BACKEND (chrome.credifyfast.com/api), not the
+// static forms host. credentials:'include' sends the shared .credifyfast.com SSO
+// cookie so withAuth-protected routes (create/list/revoke) authorize correctly.
+var SHARE_API_ORIGIN='https://chrome.credifyfast.com';
 function shareApi(path, opts){
-  opts=opts||{}; opts.credentials='same-origin';
+  opts=opts||{}; opts.credentials='include';
+  var url=/^https?:\/\//.test(path)?path:(SHARE_API_ORIGIN+path);
   opts.headers=Object.assign({'Content-Type':'application/json'}, opts.headers||{});
-  return fetch(path, opts).then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||('HTTP '+r.status)); return j; }); });
+  return fetch(url, opts).then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||('HTTP '+r.status)); return j; }); });
 }
 var _qrLoading=false;
 function renderQR(url){
@@ -13760,7 +13765,8 @@ function openCollectModal(scrollToQR){
 function createPatientLink(){
   var label=document.getElementById('share-label').value.trim();
   var exp=parseInt(document.getElementById('share-exp').value,10);
-  var body={kind:'single',label:label||null}; if(!isNaN(exp)&&exp>0) body.expiresInDays=exp;
+  var html=''; try{ html=buildHTMLForm(); }catch(e){ html=''; }
+  var body={kind:'single',label:label||null,html:html}; if(!isNaN(exp)&&exp>0) body.expiresInDays=exp;
   shareApi('/api/forms/'+encodeURIComponent(FORM.id)+'/links',{method:'POST',body:JSON.stringify(body)})
     .then(function(){ document.getElementById('share-label').value=''; document.getElementById('share-exp').value=''; toast('Patient link created'); loadShareLinks(); })
     .catch(function(e){ toast(e.message); });
