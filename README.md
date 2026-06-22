@@ -342,6 +342,9 @@ erDiagram
     Group        |o--o{ Form         : "groups"
     Form         ||--o{ FormShare    : "shared via"
     Form         |o--o{ AuditLog     : "references"
+    Form         ||--o{ ShareLink    : "shared as (v4.1)"
+    Form         ||--o{ Submission   : "receives (v4.1)"
+    ShareLink    |o--o{ Submission   : "collected via"
 
     Organization {
         string   id PK
@@ -415,15 +418,43 @@ erDiagram
         string   formId FK "nullable"
         datetime createdAt
     }
+    ShareLink {
+        string   id PK
+        string   token UK "random, in /f/<token>"
+        string   formId FK
+        string   organizationId
+        string   kind "public|single"
+        string   label "nullable"
+        bytes    htmlEnc "AES-256-GCM form HTML"
+        string   htmlIv
+        string   htmlTag
+        datetime expiresAt "nullable"
+        datetime revokedAt "nullable"
+        datetime usedAt "nullable (single-use)"
+        string   createdById
+        datetime createdAt
+    }
+    Submission {
+        string   id PK
+        string   formId FK
+        string   shareLinkId FK "nullable"
+        string   organizationId
+        bytes    dataEnc "AES-256-GCM answers (PHI)"
+        string   dataIv
+        string   dataTag
+        datetime createdAt
+    }
 ```
 
-**Notes:** `User`↔`Form` is many-to-many resolved through `FormShare` (`@@unique([formId, userId])`). `Form.schemaEnc` holds the AES-256-GCM-encrypted builder JSON (`rows` / `weightGroups` / `style`); `scoringSections`, `Block.fieldsJson`, and `AuditLog.meta` are plaintext `jsonb`. `RefreshToken` and `FormShare` cascade-delete with their parents.
+**Notes:** `User`↔`Form` is many-to-many resolved through `FormShare` (`@@unique([formId, userId])`). `Form.schemaEnc` holds the AES-256-GCM-encrypted builder JSON (`rows` / `weightGroups` / `style`); `scoringSections`, `Block.fieldsJson`, and `AuditLog.meta` are plaintext `jsonb`. `RefreshToken`, `FormShare`, `ShareLink`, and `Submission` cascade-delete with their parent `Form`. **v4.1 — public form sharing:** `ShareLink.htmlEnc` is the snapshotted fillable-form HTML and `Submission.dataEnc` is the patient's answers (PHI) — both AES-256-GCM encrypted at rest, exactly like `Form.schemaEnc`. `organizationId` on these two is a scalar (no FK) for lighter writes from the public endpoints.
 
 A plain-text view of the same relationships:
 
 ```
 organizations ──< users ──< forms ──< form_shares
                                  └──< scoring_sections
+                                 └──< share_links ──< submissions   (v4.1)
+                                 └──< submissions                   (v4.1)
                               └──< blocks
                          └──< groups ──< form_groups
                               └──< audit_logs
@@ -478,6 +509,8 @@ model Form {
   groupId        String?
   group          Group?          @relation(fields: [groupId], references: [id])
   shares         FormShare[]
+  shareLinks     ShareLink[]     // v4.1 public links
+  submissions    Submission[]    // v4.1 patient responses
   scoringSections Json           // lightweight metadata (non-sensitive)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -498,6 +531,47 @@ model FormShare {
 enum ShareAccess {
   EDIT
   VIEW
+}
+
+// v4.1 — public form sharing. token lives in /f/<token>; htmlEnc is the
+// AES-256-GCM-encrypted fillable-form HTML snapshot served to the patient.
+model ShareLink {
+  id             String       @id @default(cuid())
+  token          String       @unique
+  formId         String
+  form           Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  organizationId String
+  kind           String       @default("public") // "public" | "single"
+  label          String?
+  htmlEnc        Bytes
+  htmlIv         String
+  htmlTag        String
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  usedAt         DateTime?
+  createdById    String
+  createdAt      DateTime     @default(now())
+  submissions    Submission[]
+
+  @@index([formId])
+  @@index([organizationId])
+}
+
+// v4.1 — a filled response. dataEnc is the AES-256-GCM-encrypted answers (PHI).
+model Submission {
+  id             String     @id @default(cuid())
+  formId         String
+  form           Form       @relation(fields: [formId], references: [id], onDelete: Cascade)
+  shareLinkId    String?
+  shareLink      ShareLink? @relation(fields: [shareLinkId], references: [id])
+  organizationId String
+  dataEnc        Bytes
+  dataIv         String
+  dataTag        String
+  createdAt      DateTime   @default(now())
+
+  @@index([formId])
+  @@index([shareLinkId])
 }
 
 model Group {
@@ -537,8 +611,8 @@ model AuditLog {
 
 **Connection Details (Production)**
 ```
-Host: 35.255.131.130
-Port: 5432 (internal via Docker)
+Host: 35.255.131.130   (container: docker-postgres-1)
+Port: 5434 on the host → 5432 in the container
 Database: credify
 User: credify
 ```
@@ -555,6 +629,8 @@ User: credify
 | `Group` | Form folders/categories | varies |
 | `Block` | Reusable field templates | varies |
 | `AuditLog` | Activity tracking | varies |
+| `ShareLink` | Public form-share tokens + encrypted HTML snapshot (v4.1) | varies |
+| `Submission` | Encrypted patient form responses / PHI (v4.1) | varies |
 | `_prisma_migrations` | Schema version tracking | 1+ |
 
 **Table Schemas**
@@ -652,6 +728,36 @@ CREATE TABLE "AuditLog" (
     "formId"    TEXT REFERENCES "Form"("id"),
     "createdAt" TIMESTAMP(3) DEFAULT now()
 );
+
+-- ShareLink (v4.1 — public form-share tokens; htmlEnc = AES-256-GCM form HTML)
+CREATE TABLE "ShareLink" (
+    "id"             TEXT PRIMARY KEY,
+    "token"          TEXT NOT NULL UNIQUE,   -- the value in /f/<token>
+    "formId"         TEXT NOT NULL REFERENCES "Form"("id") ON DELETE CASCADE,
+    "organizationId" TEXT NOT NULL,          -- scalar (no FK)
+    "kind"           TEXT NOT NULL DEFAULT 'public',  -- 'public' | 'single'
+    "label"          TEXT,
+    "htmlEnc"        BYTEA NOT NULL,
+    "htmlIv"         TEXT NOT NULL,
+    "htmlTag"        TEXT NOT NULL,
+    "expiresAt"      TIMESTAMP(3),
+    "revokedAt"      TIMESTAMP(3),
+    "usedAt"         TIMESTAMP(3),           -- set when a single-use link is filled
+    "createdById"    TEXT NOT NULL,
+    "createdAt"      TIMESTAMP(3) DEFAULT now()
+);
+
+-- Submission (v4.1 — patient responses; dataEnc = AES-256-GCM answers, PHI)
+CREATE TABLE "Submission" (
+    "id"             TEXT PRIMARY KEY,
+    "formId"         TEXT NOT NULL REFERENCES "Form"("id") ON DELETE CASCADE,
+    "shareLinkId"    TEXT REFERENCES "ShareLink"("id") ON DELETE SET NULL,
+    "organizationId" TEXT NOT NULL,          -- scalar (no FK)
+    "dataEnc"        BYTEA NOT NULL,
+    "dataIv"         TEXT NOT NULL,
+    "dataTag"        TEXT NOT NULL,
+    "createdAt"      TIMESTAMP(3) DEFAULT now()
+);
 ```
 
 **Indexes**
@@ -668,6 +774,11 @@ CREATE INDEX ON "Group"("organizationId");
 CREATE INDEX ON "Block"("organizationId");
 CREATE INDEX ON "AuditLog"("userId");
 CREATE INDEX ON "AuditLog"("entityId");
+CREATE UNIQUE INDEX ON "ShareLink"("token");
+CREATE INDEX ON "ShareLink"("formId");
+CREATE INDEX ON "ShareLink"("organizationId");
+CREATE INDEX ON "Submission"("formId");
+CREATE INDEX ON "Submission"("shareLinkId");
 ```
 
 **Useful Queries**
