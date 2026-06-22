@@ -19306,21 +19306,27 @@ function buildFormSavePayload(form){
 /* Returns a Promise that resolves with the server response (or a stub object)
    and rejects on a network / non-2xx error. Pure data layer — no UI here. */
 function pushFormToDatabase(form){
-  var payload = buildFormSavePayload(form);
-  if(!DB_SAVE.endpoint){
-    // STUB MODE — no backend wired yet. Surface the payload and succeed so the
-    // button flow is fully exercised. Replace by setting DB_SAVE.endpoint.
-    try{ console.log('[DB_SAVE stub] would POST form payload:', payload); }catch(e){}
-    return new Promise(function(resolve){ setTimeout(function(){ resolve({ ok:true, stub:true, id:payload.id }); }, 400); });
+  var f = form || FORM;
+  // Real backend save through CredifyAPI (JWT / shared-cookie) when signed in.
+  // Mirrors the debounced saveFormToAPI() payload so an explicit Save and an
+  // autosave produce the same record. Offline → local-only (already autosaved).
+  if(typeof API_MODE!=='undefined' && API_MODE && window.CredifyAPI){
+    var EXCLUDE={id:1,_apiId:1,_dbClean:1,_previewOnly:1,_sysPending:1,ownerId:1,shares:1,groupId:1,scoringSections:1,createdAt:1,updatedAt:1};
+    var schemaRest={}; for(var k in f){ if(EXCLUDE[k]) continue; schemaRest[k]=f[k]; }
+    var formData={ title:f.title||'Untitled', description:f.desc||'', schema:schemaRest, scoringSections:f.scoringSections||[] };
+    if(f.groupId && !/_/.test(f.groupId)) formData.groupId=f.groupId; // only server (cuid) group ids
+    var chk=function(res){ if(res && res.error) throw new Error(res.error); return res; };
+    if(f._apiId){
+      return CredifyAPI.updateForm(f._apiId, formData).then(chk).then(function(){ return { ok:true, id:f._apiId }; });
+    }
+    // No server id yet: adopt it if the id already exists server-side, else create.
+    return Promise.resolve(CredifyAPI.getForm(f.id)).then(function(existing){
+      if(existing && !existing.error){ f._apiId=f.id; return CredifyAPI.updateForm(f.id, formData).then(chk).then(function(){ return { ok:true, id:f.id }; }); }
+      return CredifyAPI.createForm(formData).then(chk).then(function(created){ if(created && created.form){ f._apiId=created.form.id; } return { ok:true, id:(created && created.form && created.form.id) || f.id }; });
+    });
   }
-  return fetch(DB_SAVE.endpoint, {
-    method: DB_SAVE.method || 'POST',
-    headers: DB_SAVE.headers || { 'Content-Type':'application/json' },
-    body: JSON.stringify(payload)
-  }).then(function(res){
-    if(!res.ok) throw new Error('Server responded ' + res.status);
-    return res.json().catch(function(){ return { ok:true }; });
-  });
+  // Not signed in / offline: the form is already autosaved to localStorage.
+  return Promise.resolve({ ok:true, local:true, id:f && f.id });
 }
 
 /* Toolbar handler: persists locally first, then pushes to the DB with clear
@@ -19377,7 +19383,7 @@ function saveFormToDatabase(){
     if(typeof persistForms==='function') persistForms();
     updateDraftBadge();
     _dbSaveSetBtns('Saved ✓', false);
-    toast((resp && resp.stub) ? 'Saved — DB endpoint not wired yet (stub)' : 'Form saved to database');
+    toast((resp && resp.local) ? 'Saved locally — sign in to sync to the database' : 'Form saved to database');
     setTimeout(function(){ _dbSaveSetBtns('Save', false); DB_SAVE_BUSY=false; updateDraftBadge(); }, 1500);
   }).catch(function(err){
     _dbSaveSetBtns('Save', false); DB_SAVE_BUSY=false;
@@ -20585,7 +20591,7 @@ var WIZARDS={
         html:'Switched to <b>Preview</b> — this is the live <b>Score</b> card (total, max and severity band) for the answers shown. The “Show scores to respondent” toggle decides whether the patient sees the number; alerts still reach clinicians either way.' },
       { title:'Save your work', target:'#dbsave-btn-bottom', last:true,
         onEnter:function(){ _wizBackToBuild(); },
-        html:'Scoring is part of the form, so it saves with it. Press <b>Finish &amp; Save</b> to commit to the database (a stub until an endpoint is wired) — or just keep editing; changes autosave locally.',
+        html:'Scoring is part of the form, so it saves with it. Press <b>Finish &amp; Save</b> to commit it to the database — or just keep editing; changes autosave locally.',
         action:{label:'Finish & Save', run:function(){ try{ if(typeof saveFormToDatabase==='function') saveFormToDatabase(); else if(typeof saveForm==='function') saveForm(); }catch(e){} }} }
     ]
   },
