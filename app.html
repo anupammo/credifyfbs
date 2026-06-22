@@ -17989,6 +17989,9 @@ function openShareModal(formId){
   if(!f){ toast('Form not found'); return; }
   if(!canShareForm(f)){ toast('Only the owner or an admin can share this form'); return; }
   SHARE_FORM_ID=formId;
+  // Pre-create the public patient link now so the Send tab's copy/share buttons
+  // have a real /f/<token> URL ready when clicked (preserves the user gesture).
+  try{ prepareShareSendUrl(f); }catch(e){}
   if(typeof ensureLocationsLoaded==='function') ensureLocationsLoaded();
   const title=f.title&&f.title.trim()?f.title:'Untitled form';
   const ownerName=USERS.find(u=>u.id===f.ownerId)?.name||'Unknown';
@@ -18109,6 +18112,33 @@ function shareFormUrl(f){
   origin=String(origin).replace(/\/+$/,'');
   return origin+'/f/'+encodeURIComponent(id);
 }
+/* Render the export (fillable) HTML for a GIVEN form. buildHTMLForm() renders the
+   global FORM, so for any other form we swap FORM in, render, and restore — the
+   editor state is left untouched (finally). Used to snapshot a form's HTML into a
+   public ShareLink so the patient fill page can serve it. */
+function buildFormHtmlFor(f){
+  if(typeof buildHTMLForm!=='function' || !f) return '';
+  if(typeof FORM!=='undefined' && FORM && FORM.id===f.id){ try{ return buildHTMLForm(); }catch(e){ return ''; } }
+  var saved=(typeof FORM!=='undefined')?FORM:null;
+  try{ FORM=JSON.parse(JSON.stringify(f)); if(!Array.isArray(FORM.rows)) FORM.rows=[]; return buildHTMLForm(); }
+  catch(e){ return ''; }
+  finally{ FORM=saved; }
+}
+/* The patient-facing link must be a real ShareLink token (the backend resolves
+   /f/<token> to the snapshotted HTML); a raw form id can't be rendered. We create
+   the token when the Share modal opens and cache the URL so the click handlers can
+   use it synchronously (preserving the user gesture for navigator.share/clipboard).
+   If creation fails (offline / form not synced), callers fall back to shareFormUrl. */
+var SHARE_SEND_URL=null;
+function prepareShareSendUrl(f){
+  SHARE_SEND_URL=null;
+  if(!f || !f.id) return;
+  var html=buildFormHtmlFor(f);
+  if(!html) return;
+  shareApi('/api/forms/'+encodeURIComponent(f.id)+'/links',{method:'POST',body:JSON.stringify({kind:'public',html:html})})
+    .then(function(res){ if(res&&res.token) SHARE_SEND_URL=window.location.origin+'/f/'+res.token; })
+    .catch(function(){});
+}
 /* Send tab: deliver this form's patient link over a channel. SMS and Email open
    on the current device (sms:/mailto:); Fax and Portal have no device handler,
    so they are queued to SHARE_NOTIF_KEY for the connected Credify service to
@@ -18117,7 +18147,9 @@ function shareFormUrl(f){
 function shareSendChannel(kind){
   var f=(FORMS||[]).find(function(x){return x.id===SHARE_FORM_ID;}); if(!f){ toast('Form not found'); return; }
   var el=document.getElementById('share-send-dest'); var dest=el?(el.value||'').trim():'';
-  var url=shareFormUrl(f);
+  // Use the pre-created ShareLink token URL (set when the modal opened); fall back
+  // to the legacy form-id URL only if the token isn't ready (offline / not synced).
+  var url=SHARE_SEND_URL||shareFormUrl(f);
   var title=(f.title&&f.title.trim())?f.title:'Credify form';
   var msg='Please complete this form: '+title+'\n'+url;
   function copyLink(){ if(typeof copyText==='function'){ copyText(url); } else if(navigator.clipboard){ navigator.clipboard.writeText(url); } }

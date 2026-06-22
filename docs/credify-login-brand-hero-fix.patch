@@ -4,7 +4,7 @@ index d3bfd36..64d4c02 100644
 +++ b/app/globals.css
 @@ -53,7 +53,14 @@ body {
  
- /* ========= BRAND PANEL (B‑hero) ========= */
+ /* ========= BRAND PANEL (B-hero) ========= */
  .brand {
 -  position: relative;
 +  /* Pin the brand to a constant viewport height so the taller "Create account"
@@ -16,5 +16,5 @@ index d3bfd36..64d4c02 100644
 +  align-self: start;
 +  height: 100vh;
    overflow: hidden;
-   color: var(--white);
+   color: var(--white)
    background: linear-gradient(135deg, #0b4030 0%, var(--brand) 55%, #06291d 100%);
