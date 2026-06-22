@@ -2,13 +2,17 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Branch](https://img.shields.io/badge/Branch-v4.1-green)](./manifest.json)
-[![UI](https://img.shields.io/badge/UI-Merged_Prototype-teal)](./app.html)
-[![Integration](https://img.shields.io/badge/Backend-Wired_(CredifyAPI)-brightgreen)](#10-extension--backend-integration)
-[![Backend](https://img.shields.io/badge/Backend-Next.js_16-black)](./backend)
-[![DB](https://img.shields.io/badge/Database-PostgreSQL_16-blue)](./backend/prisma)
-[![Deploy](https://img.shields.io/badge/Deploy-GCP_Cloud_Run-orange)](./infra)
-[![License](https://img.shields.io/badge/License-Internal--Use--Only-red)](#)
+[![Branch](https://img.shields.io/badge/branch-v4.1-2ea44f)](./manifest.json)
+[![Frontend](https://img.shields.io/badge/frontend-Single--file_HTML%2FJS-f7df1e)](./app.html)
+[![Next.js](https://img.shields.io/badge/Next.js-16.2-black)](./backend)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178c6)](./backend)
+[![Prisma](https://img.shields.io/badge/Prisma-5.22-2d3748)](./backend/prisma)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](./backend/prisma)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ed)](./docker)
+[![nginx](https://img.shields.io/badge/nginx-1.24-009639)](./docker/nginx)
+[![Deploy](https://img.shields.io/badge/deploy-GCP_VM-4285f4)](#11-docker--gcp-deployment)
+[![Auth](https://img.shields.io/badge/auth-JWT_%2B_cookie_SSO-orange)](#9-authentication-flow)
+[![License](https://img.shields.io/badge/license-Internal_Use_Only-red)](#)
 
 ---
 
@@ -166,24 +170,79 @@ app.html  (sandboxed) ── localStorage shim
 
 ## 4. Tech Stack & Rationale
 
-### Decision Matrix
+> This reflects **what is actually running today**. The original design targeted managed
+> GCP services (Cloud Run / Cloud SQL / Secret Manager / CMEK); current production instead
+> runs on a single **GCP Compute Engine VM** with Docker + nginx — those managed services
+> are listed under **Planned** below and in [§11](#11-docker--gcp-deployment).
 
-| Concern | Choice | Why |
-|---------|--------|-----|
-| **Backend framework** | **Next.js 16** (App Router, API routes only) | Zero config, TypeScript first, edge-ready, easy Docker packaging, no extra Express boilerplate |
-| **Database** | **PostgreSQL 16** | Native `JSONB` for form schemas, `pgcrypto` for at-rest field encryption, robust ACID guarantees, Cloud SQL managed |
-| **ORM** | **Prisma** | Type-safe client, auto-migrations, JSONB support, excellent TS DX |
-| **Authentication** | **NextAuth.js v5** (Credentials + JWT) | Handles session lifecycle, CSRF, token rotation; extensible to SSO later |
-| **Transport security** | **TLS 1.3** (GCP-managed) | Industry standard; no manual cert management with Cloud Run |
-| **Payload encryption** | **AES-256-GCM** (Node.js `crypto`) | Symmetric authenticated encryption; form JSON encrypted before DB write |
-| **At-rest encryption** | **pgcrypto** + **GCP CMEK** | Column-level encryption for PII; GCP KMS for key management |
-| **Containerisation** | **Docker** (multi-stage) | Minimal final image (~150 MB), reproducible builds |
-| **Container registry** | **GCP Artifact Registry** | Native GCP integration, IAM-controlled, vulnerability scanning |
-| **Compute** | **GCP Cloud Run** | Serverless containers, auto-scaling to zero, pay-per-request |
-| **Database hosting** | **GCP Cloud SQL** | Managed PostgreSQL, automated backups, private VPC connectivity |
-| **Secrets** | **GCP Secret Manager** | Centralised secret rotation, IAM-scoped access, audit trail |
-| **CI/CD** | **GitHub Actions** | Build → test → push image → deploy to Cloud Run |
-| **Schema validation** | **Zod** | Runtime type safety at API boundary, pairs with Prisma types |
+### Frontend — builder & patient fill
+
+| Tech | Used for |
+|------|----------|
+| **Vanilla HTML / CSS / JS** — single-file `app.html` (~22k lines, no framework) | The entire Form Builder UI; inline `<style>` + `<script>`, stable `id`/`name` hooks for backend mapping |
+| **`fill.html`** | Lightweight **public patient fill page** (`/f/<token>`) — renders the form in an isolated iframe, no SSO gate |
+| **Branded error pages** — `errors/404|403|50x.html` | nginx `error_page` targets (forest-green theme) |
+| **Instrument Serif + Sora** (Google Fonts) | Brand typography — serif headings / sans body |
+| **html2pdf.bundle** | Filled-PDF export |
+| **qrcodejs** (cdnjs) | QR codes for patient share links |
+| **MV3 Chrome Extension** — `manifest.json`, `background.js`, `newtab.*` | Original v1.0 packaging (sandboxed `app.html`); the web build now serves the same file standalone |
+
+### Backend API
+
+| Tech | Version | Why |
+|------|---------|-----|
+| **Next.js** (App Router, API routes only) | 16.2 | TypeScript-first, easy Docker packaging, no Express boilerplate |
+| **TypeScript** | 5.4 | End-to-end type safety |
+| **Prisma ORM** (+ `@prisma/client`) | 5.22 | Type-safe queries, migrations, `binaryTargets` for Alpine. ⚠️ A stray `npx prisma` pulls Prisma **7**, which rejects the `datasource url` in `schema.prisma` — run the pinned 5.22 (or move the url to `prisma.config.ts`) |
+| **Zod** | 3.23 | Runtime request validation at the API boundary |
+| **ESLint 9 · Jest 29 · ts-node** | — | Lint · tests · `db:seed` runner |
+
+### Auth, security & crypto
+
+| Tech | Used for |
+|------|----------|
+| **JWT** (`jsonwebtoken` 9) | Builder-API access tokens (HS256) + rotating refresh tokens — **custom, not NextAuth** |
+| **bcryptjs** | Password hashing |
+| **credify-login** — separate Next.js app (`login.credifyfast.com`, repo `anupammo/credify-login`) | The **SSO authority** — NextAuth + Google OAuth; issues the shared `.credifyfast.com` `credify_token` cookie |
+| **Shared-cookie SSO + credentialed CORS** | `forms` / `chrome` / `login` subdomains trust one session; backend `withAuth` validates the cookie (`CREDIFY_LOGIN_JWT_SECRET`) and provisions users by email |
+| **AES-256-GCM** (Node `crypto`) | **App-level at-rest encryption** of form schemas, share-link HTML, and submission answers (`encryptSchema`) — not pgcrypto |
+| **HMAC-SHA256** | Payload signing on write endpoints |
+| **RBAC** (`withAuth` + `withRole`) | ADMIN / EDITOR / VIEWER enforcement |
+| **Sliding-window rate limiting** | 100 req/min auth · 500 req/min data |
+
+### Data
+
+| Tech | Used for |
+|------|----------|
+| **PostgreSQL 16** (`postgres:16-alpine`) | Primary store — `JSONB` for scoring/blocks, `BYTEA` for AES ciphertext |
+| **Models** | Organization, User, Form, Group, Block, FormShare, AuditLog, RefreshToken, **ShareLink**, **Submission** |
+
+### Infrastructure — current production (GCP VM)
+
+| Tech | Used for |
+|------|----------|
+| **GCP Compute Engine VM** (Ubuntu) | Single host running everything |
+| **Docker + Docker Compose** | `docker-backend-1` (Next.js API → `:3000`) and `docker-postgres-1` (Postgres) |
+| **nginx 1.24** | TLS termination · reverse proxy (`chrome.` → `:3000`) · static hosting (`forms.`) · error pages · `/f/` routing |
+| **pm2** | Runs `credify-login` (`login.credifyfast.com`) |
+| **Certbot / Let's Encrypt** | Wildcard `*.credifyfast.com` TLS (1.2 / 1.3) |
+| **`.env` files on host** | Secrets — `DATABASE_URL`, JWT / AES / HMAC keys, `CREDIFY_LOGIN_JWT_SECRET` |
+
+### Infrastructure — planned (managed GCP, see [§11](#11-docker--gcp-deployment))
+
+Cloud Run (serverless compute) · Cloud SQL (managed Postgres) · Artifact Registry · Secret Manager · CMEK · GitHub Actions CI/CD (`deploy.yml`).
+
+### Domains
+
+| Host | Serves | Runs on |
+|------|--------|---------|
+| `forms.credifyfast.com` | Builder (`app.html`/`index.html`) + patient fill (`fill.html`) | nginx static |
+| `chrome.credifyfast.com` | Builder REST API (`/api/**`) | nginx → Docker `:3000` |
+| `login.credifyfast.com` | SSO — login / Google OAuth / session | pm2 (credify-login) |
+
+### Local dev
+
+Git / GitHub (`anupammo/credifyfbs`, `anupammo/credify-login`) · **XAMPP** (Windows — serves `app.html` locally) · Node 20 · PostgreSQL 16.
 
 ---
 
@@ -889,6 +948,12 @@ app.html setItem() → postMessage → newtab.js → chrome.runtime.sendMessage
 
 ## 11. Docker & GCP Deployment
 
+> **Current production reality:** the app runs on a single **GCP Compute Engine VM** —
+> `docker compose` (`docker-backend-1` API on `:3000` + `docker-postgres-1`), **nginx**
+> reverse-proxy/static host, **pm2** for `credify-login`, and **Certbot** for TLS. The
+> **Cloud Run / Cloud SQL / Artifact Registry** pipeline below is the documented **target**,
+> not what's live today. Deploy = `git pull` → `docker compose -f docker-compose.prod.yml up -d --build backend` (API) and `cp app.html → /var/www/forms.credifyfast.com/index.html` (builder); schema changes apply via SQL until the Prisma 7 `prisma.config.ts` datasource move is done.
+
 ### Dockerfile (backend/)
 
 ```dockerfile
@@ -1186,6 +1251,28 @@ hmac-secret       → HMAC_SECRET
 
 ## 14. Roadmap
 
+> Listed newest first — **planned** milestones at the top, **completed** below. Versions are monotonic: `v1.0 → v1.1 → v1.2 → v4 → v4.1` shipped (the jump to `v4` is the prototype-merge branch), with `v4.2`/`v5.0` next.
+
+### v5.0 — Platform (planned)
+
+- [ ] Multi-organization support
+- [ ] Enterprise SSO / SAML (beyond the v4.1 credify-login cookie SSO)
+- [ ] HIPAA BAA compliance review
+- [ ] Admin dashboard (Next.js pages)
+- [ ] Form analytics (completion rates, average scores)
+- [ ] GCP infrastructure provisioning (Terraform)
+
+### v4.2 — Submission Pipeline (planned)
+
+> Encrypted submission storage + the public submit endpoint (`POST /api/links/:token/submit`) already shipped in **v4.1**; this phase builds out retrieval, export, and delivery.
+
+- [ ] Submissions retrieval/list API + in-app responses viewer (decrypt server-side)
+- [ ] Export — CSV / PDF batch
+- [ ] Webhook delivery to EHR / third-party systems
+- [ ] Submission scoring engine (server-side, matches client preview logic)
+- [ ] Real-time share/submission notifications (Server-Sent Events)
+- [ ] Form version history (snapshot on every save) · email invitations for new users
+
 ### v4.1 — Public Form Sharing + SSO/UX hardening ✅ Complete (current branch)
 
 Builds on v4 with a real patient-facing form-fill flow and a round of production hardening
@@ -1233,11 +1320,15 @@ Merges the new design prototype with the existing Next.js / Prisma / PostgreSQL 
 - [ ] Full write-sync for Users (needs a password-collecting invite UI) and Groups/Shares server-id reconciliation — currently pulled read-only on login, local-first for writes
 - [ ] Backend tables + routes for the new entities (Contacts, Reports, Bundles, Delivery, System-form overrides) — currently localStorage-only
 
-### v1.0 — Local Extension ✅ Complete
+### v1.2 — GCP Deployment Ready ✅ Complete
 
-- [x] MV3 Chrome Extension with sandboxed `app.html` builder
-- [x] `chrome.storage.local` persistence via `postMessage` bridge
-- [x] Full form builder UI — drag-and-drop, scoring, skip logic, RBAC (seeded, no real auth)
+- [x] Next.js 16 App Router `params` type fix (`Promise<Record<string, string>>`) for `withAuth` middleware
+- [x] Prisma `binaryTargets` set to `["native", "linux-musl-openssl-3.0.x"]` for Alpine Linux Docker builds
+- [x] Docker Compose `version` field removed (Compose v2 spec)
+- [x] `package-lock.json` synced — `@types/uuid` upgraded to v11
+- [x] Full codebase verified and ready to deploy on GCP Cloud Run
+
+> Open TODOs once parked here (Terraform, SSE notifications, audit-log UI, version history, email invitations) have been moved to **v4.2 / v5.0** above.
 
 ### v1.1 — Backend Foundation ✅ Complete
 
@@ -1260,34 +1351,11 @@ Merges the new design prototype with the existing Next.js / Prisma / PostgreSQL 
 - [x] GitHub Actions CI/CD → GCP Cloud Run (`deploy.yml`)
 - [x] Multiple instance UI fix
 
-### v1.2 — GCP Deployment Ready ✅ Complete
+### v1.0 — Local Extension ✅ Complete
 
-- [x] Next.js 16 App Router `params` type fix (`Promise<Record<string, string>>`) for `withAuth` middleware
-- [x] Prisma `binaryTargets` set to `["native", "linux-musl-openssl-3.0.x"]` for Alpine Linux Docker builds
-- [x] Docker Compose `version` field removed (Compose v2 spec)
-- [x] `package-lock.json` synced — `@types/uuid` upgraded to v11
-- [x] Full codebase verified and ready to deploy on GCP Cloud Run
-- [ ] Extension ApiClient + hybrid online/offline mode
-- [ ] GCP infrastructure provisioning (Terraform)
-- [ ] Real-time form share notifications (Server-Sent Events)
-- [ ] Full audit log UI in extension
-- [ ] Form version history (snapshot on every save)
-- [ ] Email invitations for new users
-
-### v1.3 — Submission Pipeline
-
-- [ ] Form submission endpoint (`POST /api/forms/:id/submissions`)
-- [ ] Submission storage and export (CSV, PDF batch)
-- [ ] Webhook delivery to EHR / third-party systems
-- [ ] Submission scoring engine (server-side, matches client preview logic)
-
-### v2.0 — Platform
-
-- [ ] Multi-organization support
-- [ ] SSO / SAML integration
-- [ ] HIPAA BAA compliance review
-- [ ] Admin dashboard (Next.js pages)
-- [ ] Form analytics (completion rates, average scores)
+- [x] MV3 Chrome Extension with sandboxed `app.html` builder
+- [x] `chrome.storage.local` persistence via `postMessage` bridge
+- [x] Full form builder UI — drag-and-drop, scoring, skip logic, RBAC (seeded, no real auth)
 
 ---
 
