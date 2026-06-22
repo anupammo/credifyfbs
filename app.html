@@ -22488,27 +22488,15 @@ _credifyInit();
       } catch (e) {}
     }
     window.reserveTopbarSpace = reserveTopbarSpace; // let updateAuthUI re-measure after Admin toggles
-    // Align the Build/Preview cluster's LEFT edge under the form toolbar's
-    // "All pages" button (build mode only). Measured at runtime so it holds
-    // across window sizes; in preview the All-pages button is hidden (width 0)
-    // so we bail and the cluster keeps its default right-aligned position.
-    // Idempotent: resets to baseline each run before measuring.
+    // Unified topbar: keep .topbar-actions RIGHT-ALIGNED in every mode (Build now
+    // matches Preview). We previously shifted the Build/Preview cluster left in
+    // build mode to line it up under the form's "All pages" button; that made the
+    // topbar jump between modes. Now we just hold the default right-aligned
+    // position (.topbar uses justify-content:space-between) by clearing any margin.
     function alignClusterToAllPages() {
       try {
-        var seg  = document.getElementById('mode-seg');
-        var ap   = document.getElementById('all-pages-btn');
         var acts = document.querySelector('.topbar-actions');
-        var brand= document.querySelector('.brand');
-        if (!seg || !ap || !acts) return;
-        acts.style.marginRight = '0px';                 // baseline: right-aligned
-        var apR = ap.getBoundingClientRect(), segR = seg.getBoundingClientRect();
-        if (apR.width === 0 || segR.width === 0) return; // no layout / preview (All pages hidden)
-        var delta = segR.left - apR.left;               // how far to shift the cluster left
-        if (delta <= 1) return;                          // already aligned / cluster left of All pages
-        var brandR  = brand ? brand.getBoundingClientRect().right : 0;
-        var actsLeft= acts.getBoundingClientRect().left;
-        if (actsLeft - delta < brandR + 16) delta = Math.max(0, actsLeft - (brandR + 16));
-        acts.style.marginRight = delta + 'px';
+        if (acts) acts.style.marginRight = '0px';
       } catch (e) {}
     }
     // Re-align when toggling Build/Preview (the All-pages toolbar shows/hides).
