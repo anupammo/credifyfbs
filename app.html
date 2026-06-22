@@ -5057,16 +5057,23 @@ function previewHasFillable(){
 }
 function previewProgressPct(){
   const visPages=visiblePreviewPages();
-  let total=0, done=0;
+  let total=0, done=0;        // equal-count fallback (forms with no weights)
+  let wTotal=0, wDone=0;      // weighted budget (Weightage feature)
   FORM.rows.forEach(row=>{
     if(visPages.indexOf(pageOf(row))<0) return;
     if(!evalShowIf(row.showIf)) return;
     (row.fields||[]).forEach(f=>{
       if(NON_FILLABLE_TYPES.has(f.type)) return;
       if(!evalShowIf(f.showIf) || !groupVisible(f) || fieldHiddenInPreview(f)) return;
-      total++; if(previewAnswerFilled(f)) done++;
+      const filled=previewAnswerFilled(f);
+      total++; if(filled) done++;
+      const w=fieldWeight(f.id);
+      if(w>0){ wTotal+=w; if(filled) wDone+=w; }
     });
   });
+  // When any field carries a weightage, "Form completed %" is the weighted budget
+  // (only weighted fields count). Otherwise fall back to equal-field counting.
+  if(wTotal>0) return Math.round(wDone/wTotal*100);
   return total ? Math.round(done/total*100) : 0;
 }
 // Patch the preview progress bar in place (no full re-render) so it tracks
@@ -14625,7 +14632,7 @@ function usDateOpen(btn){var box=btn.closest('.us-date');var nat=box?box.querySe
         if(rfStyle.fontFamily) fStyleVars+=`--form-font:${rfStyle.fontFamily};`;
         if(rfStyle.size!=null) fStyleVars+=`--form-size:${rfStyle.size}pt;`;
         if(rfStyle.color) fStyleVars+=`--form-color:${rfStyle.color};`;
-        html+=`<div class="form-field${isShort?' short':''}${isOptField?' optfield':''}${topOnlySB?' cond-hidden':''}" data-cfield="${field.id}"${field.dataKey?` data-key="${esc(field.dataKey)}"`:''} style="--span:${span};${fStyleVars}">`;
+        html+=`<div class="form-field${isShort?' short':''}${isOptField?' optfield':''}${topOnlySB?' cond-hidden':''}" data-cfield="${field.id}"${fieldWeight(field.id)>0?` data-weight="${fieldWeight(field.id)}"`:''}${field.dataKey?` data-key="${esc(field.dataKey)}"`:''} style="--span:${span};${fStyleVars}">`;
         switch(field.type){
           case 'heading':
             html+=`<h2 style="font-size:18px;margin:16px 0 12px;color:#0d1f18">${esc(field.label)}</h2>`;
@@ -14804,7 +14811,7 @@ function usDateOpen(btn){var box=btn.closest('.us-date');var nat=box?box.querySe
     return false;
   }
   function computeProgress(){
-    var total=0, done=0;
+    var total=0, done=0, wTotal=0, wDone=0;
     for(var s=0;s<steps.length;s++){
       if(hiddenStep(s)) continue;
       var fields=steps[s].querySelectorAll('.form-field[data-cfield]');
@@ -14812,9 +14819,12 @@ function usDateOpen(btn){var box=btn.closest('.us-date');var nat=box?box.querySe
         var ff=fields[k];
         if(ff.classList.contains('cond-hidden')) continue;
         if(!ffFillable(ff)) continue;
-        total++; if(ffFilled(ff)) done++;
+        var fl=ffFilled(ff); total++; if(fl) done++;
+        var w=parseFloat(ff.getAttribute('data-weight'))||0;
+        if(w>0){ wTotal+=w; if(fl) wDone+=w; }
       }
     }
+    if(wTotal>0) return Math.round(wDone/wTotal*100); // weighted budget when set
     return total? Math.round(done/total*100) : 0;
   }
   function updateProgress(){
@@ -14890,8 +14900,9 @@ function usDateOpen(btn){var box=btn.closest('.us-date');var nat=box?box.querySe
     return false;
   }
   function computeProgress(){
-    var fs=form.querySelectorAll('.form-field[data-cfield]'); var total=0, done=0;
-    for(var k=0;k<fs.length;k++){ var ff=fs[k]; if(ff.classList.contains('cond-hidden')) continue; if(!ffFillable(ff)) continue; total++; if(ffFilled(ff)) done++; }
+    var fs=form.querySelectorAll('.form-field[data-cfield]'); var total=0, done=0, wTotal=0, wDone=0;
+    for(var k=0;k<fs.length;k++){ var ff=fs[k]; if(ff.classList.contains('cond-hidden')) continue; if(!ffFillable(ff)) continue; var fl=ffFilled(ff); total++; if(fl) done++; var w=parseFloat(ff.getAttribute('data-weight'))||0; if(w>0){ wTotal+=w; if(fl) wDone+=w; } }
+    if(wTotal>0) return Math.round(wDone/wTotal*100);
     return total? Math.round(done/total*100) : 0;
   }
   function updateProgress(){ var pct=computeProgress(); if(fill) fill.style.width=pct+'%'; if(ind) ind.textContent=pct+'% complete'; }
@@ -14927,8 +14938,9 @@ function usDateOpen(btn){var box=btn.closest('.us-date');var nat=box?box.querySe
     return ffFillable(ff);
   }
   function wholeForm(){
-    var total=0, done=0;
-    for(var k=0;k<allFields.length;k++){ var ff=allFields[k]; if(!fieldCountable(ff)) continue; total++; if(ffFilled(ff)) done++; }
+    var total=0, done=0, wTotal=0, wDone=0;
+    for(var k=0;k<allFields.length;k++){ var ff=allFields[k]; if(!fieldCountable(ff)) continue; var fl=ffFilled(ff); total++; if(fl) done++; var w=parseFloat(ff.getAttribute('data-weight'))||0; if(w>0){ wTotal+=w; if(fl) wDone+=w; } }
+    if(wTotal>0) return Math.round(wDone/wTotal*100);
     return total? Math.round(done/total*100):0;
   }
   function aboveBar(bar){
