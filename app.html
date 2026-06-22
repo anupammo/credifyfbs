@@ -16,6 +16,36 @@
                   Weightage button; JAYGMAIL used a 2-row 5+4 arrangement (cosmetic).
      ------------------------------------------------------------
      CHANGELOG (newest first):
+       2026-06-22  PUBLIC FORM SHARE LINKS (token-based, end-to-end). Patient links (/f/<token>) now resolve to a
+                   real, fillable form. Backend: new Prisma ShareLink (random token, AES-encrypted HTML snapshot,
+                   expiry/revoke/single-use) + Submission (AES-256-GCM encrypted answers) models; routes POST/GET
+                   /api/forms/:id/links, POST /api/links/:token/revoke, and PUBLIC GET /api/links/:token +
+                   POST /api/links/:token/submit (no auth — gated only by the unguessable token + revoke/expiry/
+                   single-use checks). Frontend: new lightweight fill.html renders the form in an isolated iframe
+                   and points its built-in submit (window.CREDIFY_SUBMIT_URL) at the token endpoint; shareApi now
+                   targets chrome.credifyfast.com/api with credentials:'include' (was a relative /api that 404'd on
+                   the static host); the Share -> Send tab pre-creates a token on modal open (buildFormHtmlFor +
+                   prepareShareSendUrl + SHARE_SEND_URL) so Copy/Share/SMS/Email use /f/<token>, not the raw form
+                   id. nginx routes /f/ -> fill.html. Tables created via SQL (Prisma 7 CLI can't migrate until the
+                   datasource url moves to prisma.config.ts).
+       2026-06-22  TOP HEADER cleanup + real-account hardening. Removed the Switch-User (impersonation) list — the
+                   user menu now shows only the active/logged-in user (header "Signed in"). Removed the top-right
+                   account bar (Alerts/Responses/Admin); Sign out moved to the bottom of the user dropdown. On the
+                   WEB (SSO) build the bundled demo roster (Alex/Erin/Sam/Vera, @credify.dev) is no longer seeded
+                   and any stale copy is stripped (isDemoUser); currentUser() no longer defaults to USERS[0]; and a
+                   confirmed SSO session that can't resolve a user now toasts an error instead of silently showing a
+                   demo identity. (Role=ADMIN is set in the backend DB to restore New/Manage Users/Contact Directory.)
+       2026-06-22  BOOT RESILIENCE + sign-in gate timeout (fixes the "Checking your sign-in…" freeze). (1) checkLogin-
+                   Session() got a 7s AbortController timeout; on timeout/5xx it shows a recoverable "Sign in" link
+                   via showGateError instead of hanging forever. (2) Guarded three boot crashes that halted the
+                   script before _credifyInit() ran (so the gate never resolved) on profiles with stale localStorage:
+                   firstAdmin.id when USERS is empty + ownerless forms; FORM.rows normalized on load + pageCount
+                   guarded against missing rows; and the boot form-load wrapped in try/catch (falls back to a blank
+                   canvas). Incognito (no saved forms) never hit these; normal profiles did.
+       2026-06-22  BRANDED ERROR PAGES + infra notes. Added forest-green themed 404 / 403 / 50x pages (errors/,
+                   Instrument Serif + Sora, Credify mark), wired via nginx error_page. The live site serves
+                   index.html (not app.html) at /, so deploy copies app.html -> index.html; added
+                   Cache-Control:no-cache on / so redeploys are picked up without cache-busting.
        2026-06-17  FIX: Preview no longer pre-fills the demo "sample answers". The sample forms carry a per-field
                    sampleValue (e.g. PHQ-9 options pre-selected, sample names/notes) that applySampleValuesToPreview
                    was seeding into PREVIEW_ANSWERS on every preview render, so clicking Preview showed a form with

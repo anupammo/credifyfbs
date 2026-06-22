@@ -2,7 +2,7 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Branch](https://img.shields.io/badge/Branch-v4-green)](./manifest.json)
+[![Branch](https://img.shields.io/badge/Branch-v4.1-green)](./manifest.json)
 [![UI](https://img.shields.io/badge/UI-Merged_Prototype-teal)](./app.html)
 [![Integration](https://img.shields.io/badge/Backend-Wired_(CredifyAPI)-brightgreen)](#10-extension--backend-integration)
 [![Backend](https://img.shields.io/badge/Backend-Next.js_16-black)](./backend)
@@ -669,6 +669,16 @@ SELECT id, title, "ownerId", "createdAt" FROM "Form" WHERE "deletedAt" IS NULL;
 | `POST` | `/api/forms/:id/share` | owner / admin | Add / update share |
 | `DELETE` | `/api/forms/:id/share/:userId` | owner / admin | Revoke share |
 
+#### Share links & submissions (v4.1)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/forms/:id/links` | owner / editor / admin | Create a share link — body `{ kind, html, label?, expiresInDays? }` → `{ token }` |
+| `GET` | `/api/forms/:id/links` | owner / editor / admin | List a form's share links (with computed `status`) |
+| `POST` | `/api/links/:token/revoke` | owner / editor / admin | Revoke a link (accepts the link id or token) |
+| `GET` | `/api/links/:token` | **public** | Resolve a token → the fillable form HTML (revoke/expiry/single-use checked) |
+| `POST` | `/api/links/:token/submit` | **public** | Store an AES-encrypted submission — body `{ answers }` |
+
 #### Users (Admin only)
 
 | Method | Path | Description |
@@ -1176,7 +1186,31 @@ hmac-secret       → HMAC_SECRET
 
 ## 14. Roadmap
 
-### v4 — New Prototype UI + Live Backend Integration ✅ Complete (current branch)
+### v4.1 — Public Form Sharing + SSO/UX hardening ✅ Complete (current branch)
+
+Builds on v4 with a real patient-facing form-fill flow and a round of production hardening
+discovered while deploying to the GCP VM.
+
+**Public form share links (token-based, end-to-end)**
+- [x] Prisma models — **`ShareLink`** (random token, AES-encrypted HTML snapshot of the form, `expiresAt` / `revokedAt` / `usedAt`, `kind` = `public` | `single`) and **`Submission`** (AES-256-GCM-encrypted answers, like the form schema)
+- [x] Routes — `POST`/`GET` `/api/forms/:id/links` (create/list, auth), `POST /api/links/:token/revoke` (auth), and **public** `GET /api/links/:token` + `POST /api/links/:token/submit` (no auth — gated only by the unguessable token plus revoke/expiry/single-use checks)
+- [x] **`fill.html`** — a lightweight public fill page served at `/f/<token>`; renders the form in an isolated iframe and points its built-in submit (`window.CREDIFY_SUBMIT_URL`) at the token's submit endpoint
+- [x] `shareApi` now targets `chrome.credifyfast.com/api` with `credentials:'include'` (was a relative `/api` that 404'd on the static host); Share → **Send tab** pre-creates a token on modal open (`buildFormHtmlFor` + `prepareShareSendUrl` + `SHARE_SEND_URL`) so Copy / Share / SMS / Email use `/f/<token>`, not the raw form id
+- [x] nginx routes `/f/` → `fill.html`; tables created via SQL (Prisma 7 CLI can't `migrate`/`db push` until the datasource `url` moves to `prisma.config.ts`)
+- [ ] Bundles (`/b/<id>`) reuse the same fill page — deferred
+
+**Top header + real-account hardening**
+- [x] Removed the Switch-User (impersonation) list — the user menu shows only the active/logged-in user ("Signed in"); removed the Alerts/Responses/Admin **account bar**; **Sign out** moved into the user dropdown
+- [x] Web (SSO) build no longer seeds/keeps the bundled demo roster (`@credify.dev`); `currentUser()` no longer defaults to `USERS[0]`; an unresolved SSO session surfaces an error instead of silently showing a demo identity
+
+**Resilience / fixes**
+- [x] Sign-in gate can no longer freeze on "Checking your sign-in…": `checkLoginSession()` has a 7 s timeout and shows a recoverable "Sign in" link on failure
+- [x] Fixed three boot crashes (on profiles with stale `localStorage`) that halted the script before `_credifyInit()` ran — `firstAdmin.id` when `USERS` empty, missing `FORM.rows`, and an unguarded boot form-load
+- [x] Branded **404 / 403 / 50x** error pages (`errors/`), wired via nginx `error_page`
+
+**Infra notes (forms.credifyfast.com)** — the host nginx serves **`index.html`** (not `app.html`) at `/`, so deploys copy `app.html → index.html`; added `Cache-Control: no-cache` on `/` so redeploys appear without cache-busting. The builder backend runs as the Docker container `docker-backend-1` (`proxy_pass 127.0.0.1:3000`); Postgres is `docker-postgres-1`.
+
+### v4 — New Prototype UI + Live Backend Integration ✅ Complete
 
 Merges the new design prototype with the existing Next.js / Prisma / PostgreSQL backend.
 **No builder feature was lost** — the prototype is a superset of the previous builder.
