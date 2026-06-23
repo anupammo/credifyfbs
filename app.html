@@ -8330,7 +8330,7 @@ function persistDispBlock(){
   }
   if(t.kind==='apcond'){
     setVizCond(t, block ? {block:true, match:block.match, conditions:block.conditions} : null);
-    if(t.formId && FORM && t.formId!==FORM.id) persistForms(); else saveForm();
+    if(t.formId && FORM && t.formId!==FORM.id) syncFormToBackend(t.formId); else saveForm();
     try{ render(); }catch(e){} try{ autopopRenderAllReport(); }catch(e){} try{ autopopRenderAll(); }catch(e){}
     return;
   }
@@ -8368,7 +8368,7 @@ function dispDone(){
 }
 function dispClearRule(){
   const t=resolveVizTarget(DISP_SCOPE);
-  if(t.kind==='apcond'){ setVizCond(t, null); closeModal('dispfields-modal'); if(t.formId && FORM && t.formId!==FORM.id) persistForms(); else saveForm(); try{render();}catch(e){} if(DISP_FROM_AUTOPOP){ const _w=DISP_FROM_AUTOPOP; DISP_FROM_AUTOPOP=false; DISP_AP_MODE=false; DISP_CTXFORM=null; if(_w==='report'){ openModal('autopop-all-modal'); try{autopopRenderAllReport();}catch(e){} } else { openModal('autopop-modal'); try{autopopRenderAll();}catch(e){} } } return; }
+  if(t.kind==='apcond'){ setVizCond(t, null); closeModal('dispfields-modal'); if(t.formId && FORM && t.formId!==FORM.id) syncFormToBackend(t.formId); else saveForm(); try{render();}catch(e){} if(DISP_FROM_AUTOPOP){ const _w=DISP_FROM_AUTOPOP; DISP_FROM_AUTOPOP=false; DISP_AP_MODE=false; DISP_CTXFORM=null; if(_w==='report'){ openModal('autopop-all-modal'); try{autopopRenderAllReport();}catch(e){} } else { openModal('autopop-modal'); try{autopopRenderAll();}catch(e){} } } return; }
   if(t.kind==='scfield'){ setVizCond(t, null); closeModal('dispfields-modal'); saveForm(); try{render();}catch(e){} if(DISP_FROM_SCORING){ DISP_FROM_SCORING=false; DISP_SCORE_MODE=false; openModal('scoring-modal'); try{renderScoringModal();}catch(e){} } return; }
   if(t.kind==='vgroup' && t.obj){ t.obj.showIf=null; }
   else {
@@ -9213,9 +9213,8 @@ function autopopGenKey(field){
 
 function autopopPersistSrcForm(){
   const fm = (AUTOPOP.srcFormId!=null) ? autopopGetForm(AUTOPOP.srcFormId) : null;
-  if(fm && FORM && fm.id===FORM.id){ saveForm(); }
-  else if(typeof persistForms==='function'){ persistForms(); }
-  else { saveForm(); }
+  if(!fm || (FORM && fm.id===FORM.id)){ saveForm(); return; }
+  syncFormToBackend(fm.id);
 }
 function autopopEnsureSourceKey(){
   autopopPersistSrcForm();
@@ -9386,7 +9385,7 @@ function autopopAllUnlink(formId, fieldId){
   const tgt=autopopFindField(formId, fieldId); if(!tgt) return;
   if(!(FORM && formId===FORM.id) && !canEditForm(form)){ toast('No edit access to that form'); return; }
   delete tgt.dataKey; delete tgt.prefillOverwrite;
-  if(FORM && formId===FORM.id) saveForm(); else persistForms();
+  if(FORM && formId===FORM.id) saveForm(); else syncFormToBackend(formId);
   autopopRenderAllReport(); try{ autopopRenderAll(); }catch(e){} try{ render(); }catch(e){}
   toast('Unlinked from autopopulation');
 }
@@ -9657,7 +9656,7 @@ function autopopToggle(formId, fieldId){
   } else {
     if(!canEditForm(form)){ toast('No edit access to that form'); return; }
     if(wasLinked){ delete tgt.dataKey; delete tgt.prefillOverwrite; } else tgt.dataKey=key;
-    persistForms();
+    syncFormToBackend(formId);
   }
   autopopRenderAll();
   render(); // refresh the canvas badge + the inspector's "linked" summary
@@ -9694,7 +9693,7 @@ function autopopApplyDir(formId, fieldId, overwrite){
   const form=autopopGetForm(formId); if(!form) return;
   const apply=(f)=>{ if(!f) return; if(overwrite) f.prefillOverwrite=true; else delete f.prefillOverwrite; };
   if(FORM && formId===FORM.id){ apply(findFieldById(fieldId)); saveForm(); }
-  else { if(!canEditForm(form)){ toast('No edit access to that form'); return; } apply(autopopFindField(formId, fieldId)); persistForms(); }
+  else { if(!canEditForm(form)){ toast('No edit access to that form'); return; } apply(autopopFindField(formId, fieldId)); syncFormToBackend(formId); }
   autopopRenderAll(); render();
   toast(overwrite ? 'One-way — source overwrites this field' : 'Two-way sync restored');
 }
@@ -19281,6 +19280,23 @@ function loadForms(){
   return null;
 }
 function persistForms(){ try{ localStorage.setItem(FORMS_KEY, JSON.stringify(FORMS)); }catch(e){} }
+
+/* Persist locally AND, when signed in, push ONE specific form to the backend.
+   Cross-form autopopulation edits (linking/unlinking, link direction, and
+   per-link conditions) mutate forms OTHER than the open one. Those paths called
+   persistForms() alone — localStorage only — so the changes never reached the
+   database: they survived a reload on the same browser but vanished server-side
+   and on other devices. This routes a non-active form's change through the same
+   CredifyAPI push the active form already uses (pushFormToDatabase). */
+function syncFormToBackend(formId){
+  persistForms();
+  if(typeof API_MODE==='undefined' || !API_MODE || !formId) return;
+  if(typeof FORMS==='undefined' || !Array.isArray(FORMS)) return;
+  const f=FORMS.find(x=>x.id===formId);
+  if(!f || typeof pushFormToDatabase!=='function') return;
+  try{ Promise.resolve(pushFormToDatabase(f)).catch(e=>console.error('Autopop: form sync to API failed:',e)); }
+  catch(e){ console.error('Autopop: form sync to API failed:',e); }
+}
 
 function formIsEmpty(f){
   // "empty" = no real fields anywhere and no title/desc
