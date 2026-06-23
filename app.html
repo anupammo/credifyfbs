@@ -2076,6 +2076,29 @@
 
     async deleteBlock(id) {
       return apiRequest(`/blocks/${id}`, { method: 'DELETE' });
+    },
+
+    // Contacts (Contact Directory — external recipients)
+    async getContacts() {
+      return apiRequest('/contacts');
+    },
+
+    async createContact(data) {
+      return apiRequest('/contacts', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+    },
+
+    async updateContact(id, data) {
+      return apiRequest(`/contacts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+      });
+    },
+
+    async deleteContact(id) {
+      return apiRequest(`/contacts/${id}`, { method: 'DELETE' });
     }
   };
 
@@ -17349,6 +17372,44 @@ function loadClients(){
   return null;
 }
 function persistClients(){ try{ localStorage.setItem(CLIENTS_KEY, JSON.stringify(CLIENTS)); }catch(e){} }
+
+/* ---- DB write-through for Manage Users & Contact Directory ----
+   persistUsers()/persistClients() are localStorage-only. When signed in we must
+   also write to the backend. Each record tracks its server row via _apiId (set on
+   load and on first create); no _apiId → create, has _apiId → update. Mirrors the
+   forms sync pattern. Offline (API_MODE false) these are pure no-ops beyond the
+   local persist that already happened. */
+const USER_DB_FIELDS=['name','email','role','firstName','lastName','preferredName','phone','mobile','title','company','division','employeeNumber','costCenter','timeZone','language'];
+const CONTACT_DB_FIELDS=['name','firstName','lastName','preferredName','email','phone','mobile','title','company','dob','mrn','timeZone','language','notify'];
+function pickDbFields(obj, keys){ const o={}; keys.forEach(k=>{ const v=obj[k]; if(v!==undefined && v!==null && v!=='') o[k]=v; }); return o; }
+function userDbPayload(u){ const p=pickDbFields(u, USER_DB_FIELDS); if(p.role) p.role=String(p.role).toUpperCase(); if(typeof u.active==='boolean') p.active=u.active; return p; }
+function syncUserToBackend(userId){
+  persistUsers();
+  if(typeof API_MODE==='undefined' || !API_MODE || !window.CredifyAPI) return;
+  const u=USERS.find(x=>x.id===userId);
+  if(!u || !u._apiId) return; // brand-new invites create the server row in inviteUser()
+  CredifyAPI.updateUser(u._apiId, userDbPayload(u))
+    .then(r=>{ if(r&&r.error) console.error('User sync rejected:', r.error); })
+    .catch(e=>console.error('User sync failed:', e));
+}
+function syncContactToBackend(contactId){
+  persistClients();
+  if(typeof API_MODE==='undefined' || !API_MODE || !window.CredifyAPI) return;
+  const c=CLIENTS.find(x=>x.id===contactId); if(!c) return;
+  const payload=pickDbFields(c, CONTACT_DB_FIELDS);
+  if(!payload.notify) payload.notify='email';
+  if(c._apiId){
+    CredifyAPI.updateContact(c._apiId, payload)
+      .then(r=>{ if(r&&r.error) console.error('Contact sync rejected:', r.error); })
+      .catch(e=>console.error('Contact sync failed:', e));
+  } else {
+    CredifyAPI.createContact(payload)
+      .then(res=>{ if(res&&res.contact){ c._apiId=res.contact.id; persistClients(); } else if(res&&res.error){ console.error('Contact create rejected:', res.error); } })
+      .catch(e=>console.error('Contact create failed:', e));
+  }
+}
+function deleteUserFromBackend(apiId){ if(typeof API_MODE!=='undefined' && API_MODE && apiId && window.CredifyAPI) CredifyAPI.deleteUser(apiId).then(r=>{ if(r&&r.error) console.error('User delete rejected:', r.error); }).catch(e=>console.error('User delete failed:', e)); }
+function deleteContactFromBackend(apiId){ if(typeof API_MODE!=='undefined' && API_MODE && apiId && window.CredifyAPI) CredifyAPI.deleteContact(apiId).then(r=>{ if(r&&r.error) console.error('Contact delete rejected:', r.error); }).catch(e=>console.error('Contact delete failed:', e)); }
 function seedDefaultClients(){
   CLIENTS=[
     {id:uid('cl'),name:'Jordan Rivera',email:'jordan.rivera@example.com',phone:'(619) 555-0210',dob:'1990-03-14',mrn:'CL-1001',notify:'email'},
@@ -17380,7 +17441,7 @@ function addClient(){
   if(phone) rec.phone=phone;
   if(mobile) rec.mobile=mobile;
   CLIENTS.push(rec);
-  persistClients(); renderClientsList();
+  syncContactToBackend(rec.id); renderClientsList();
   ['client-first','client-last','client-email','client-phone','client-mobile','client-dob','client-mrn'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
   const nsel=document.getElementById('client-notify'); if(nsel) nsel.value='email';
   toast('Contact added');
@@ -17388,16 +17449,18 @@ function addClient(){
 function changeContactNotify(id,val){
   const c=CLIENTS.find(x=>x.id===id); if(!c) return;
   c.notify=(val==='sms'||val==='both')?val:'email';
-  persistClients(); renderClientsList();
+  syncContactToBackend(id); renderClientsList();
   // "Their configuration" channel labels in an open Share window depend on this.
   const sm=document.getElementById('share-modal'); if(sm && sm.classList.contains('open')) renderShareList();
   toast('Delivery configuration updated');
 }
 function deleteClient(id){
   if(isViewer()) return;
+  const c=CLIENTS.find(x=>x.id===id); const apiId=c&&c._apiId;
   CLIENTS=CLIENTS.filter(c=>c.id!==id); persistClients(); renderClientsList();
+  deleteContactFromBackend(apiId);
 }
-function changeClientPhone(id,val){ const c=CLIENTS.find(x=>x.id===id); if(!c) return; c.phone=formatPhoneLoose(val); persistClients(); }
+function changeClientPhone(id,val){ const c=CLIENTS.find(x=>x.id===id); if(!c) return; c.phone=formatPhoneLoose(val); syncContactToBackend(id); }
 function renderClientsList(){
   const mount=document.getElementById('clients-list'); if(!mount) return;
   let html='';
@@ -17788,7 +17851,24 @@ function inviteUser(){
   renderUserMenu(); // keep switcher menu fresh if it's open later
   ['invite-first','invite-last','invite-email','invite-phone','invite-mobile'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
   document.getElementById('invite-role').value='editor';
-  toast('User invited');
+  // Create the user in the backend when signed in. No password is sent — the
+  // server generates a temporary one and returns it once, which we surface so
+  // the admin can pass it on (until an email/set-password flow is wired).
+  if(typeof API_MODE!=='undefined' && API_MODE && window.CredifyAPI){
+    CredifyAPI.createUser({ name, email, role:String(role).toUpperCase(), firstName:first||undefined, lastName:last||undefined, phone:phone||undefined, mobile:mobile||undefined })
+      .then(res=>{
+        if(res && res.user){
+          rec._apiId=res.user.id; rec.id=res.user.id; persistUsers(); renderUsersList();
+          if(res.tempPassword){ try{ alert('User created.\n\nTemporary password for '+email+':\n\n'+res.tempPassword+'\n\nShare this with them securely — they can change it after signing in.'); }catch(e){} }
+          toast('User invited & saved to database');
+        } else if(res && res.error){
+          toast('Invited locally — server: '+res.error);
+        }
+      })
+      .catch(e=>{ console.error('Invite to API failed:', e); toast('Invited locally (offline)'); });
+  } else {
+    toast('User invited');
+  }
 }
 
 /* Loose phone formatter for the roster — formats 10 US digits as
@@ -17808,7 +17888,7 @@ function changeUserPhone(userId,raw){
   if(!u) return;
   const p=formatPhoneLoose(raw);
   if(p) u.phone=p; else delete u.phone;
-  persistUsers();
+  syncUserToBackend(userId);
   renderUsersList();
 }
 // Per-user notification channel preferences (how this person is reached when
@@ -17817,7 +17897,7 @@ function toggleUserNotify(userId, channel, on){
   const u=USERS.find(x=>x.id===userId); if(!u) return;
   if(!u.notify||typeof u.notify!=='object') u.notify={};
   u.notify[channel]=!!on;
-  persistUsers();
+  persistUsers(); // notify channel prefs are local-only (no backend column yet)
   renderUsersList();
 }
 // Free-form contact details (office phone, title). Phone fields get loose
@@ -17827,7 +17907,7 @@ function changeUserContact(userId, prop, raw){
   let v=String(raw||'').trim();
   if(prop==='officePhone') v=formatPhoneLoose(raw)||'';
   if(v) u[prop]=v; else delete u[prop];
-  persistUsers();
+  syncUserToBackend(userId);
   renderUsersList();
 }
 
@@ -17852,12 +17932,12 @@ function applyProfileField(obj, prop, raw, isCheckbox){
 function setUserField(userId, prop, raw, isCheckbox){
   const u=USERS.find(x=>x.id===userId); if(!u) return;
   applyProfileField(u, prop, raw, isCheckbox);
-  persistUsers(); renderUsersList(); if(typeof renderUserMenu==='function') renderUserMenu();
+  syncUserToBackend(userId); renderUsersList(); if(typeof renderUserMenu==='function') renderUserMenu();
 }
 function setContactField(id, prop, raw, isCheckbox){
   const c=CLIENTS.find(x=>x.id===id); if(!c) return;
   applyProfileField(c, prop, raw, isCheckbox);
-  persistClients(); renderClientsList();
+  syncContactToBackend(id); renderClientsList();
 }
 // Reusable labeled inputs for the detail grids.
 function pfText(setter, id, prop, val, ph, type){ return `<label class="ucf"><span class="ucf-l">${ph.label}</span><input type="${type||'text'}" value="${esc(val||'')}" placeholder="${esc(ph.ph||'')}" onchange="${setter}('${id}','${prop}',this.value)"></label>`; }
@@ -17907,7 +17987,7 @@ function changeUserName(userId,raw){
   const name=String(raw||'').trim();
   if(!name){ toast('Name can\'t be empty'); renderUsersList(); return; }
   u.name=name;
-  persistUsers();
+  syncUserToBackend(userId);
   if(userId===CURRENT_USER_ID) renderUserChip();
   renderUserMenu();
   renderUsersList();
@@ -17920,7 +18000,7 @@ function changeUserEmail(userId,raw){
   if(!email){ toast('Email can\'t be empty'); renderUsersList(); return; }
   if(USERS.some(x=>x.id!==userId && (x.email||'').toLowerCase()===email.toLowerCase())){ toast('That email is already in use'); renderUsersList(); return; }
   u.email=email;
-  persistUsers();
+  syncUserToBackend(userId);
   renderUsersList();
 }
 
@@ -17929,11 +18009,12 @@ function changeUserRole(userId,newRole){
   if(!u) return;
   // Don't let an admin demote themselves and lock the team out of admin tools.
   if(u.id===CURRENT_USER_ID && newRole!=='admin'){ toast('You can\'t demote yourself'); renderUsersList(); return; }
+  const prev=u.role;
   u.role=newRole;
   // Never let the change strip the team of its last user-manager (this also
   // stops you from demoting yourself out of the only managing role).
   if(managersCount()<1){ u.role=prev; toast('At least one user must keep a role that can manage users'); renderUsersList(); return; }
-  persistUsers();
+  syncUserToBackend(userId);
   if(userId===CURRENT_USER_ID){ renderUserChip(); renderUserMenu(); applyRoleUI(); }
   renderUsersList();
 }
@@ -17963,8 +18044,10 @@ function deleteUser(userId){
   FORMS.forEach(stripFromForm);
   stripFromForm(FORM); // the in-memory editor copy is separate from FORMS
   persistForms();
+  const apiId=u._apiId;
   USERS=USERS.filter(x=>x.id!==userId);
   persistUsers();
+  deleteUserFromBackend(apiId);
   renderUsersList();
   if(typeof render==='function' && FORM && FORM.id) render();
   toast('User deleted');
@@ -22278,7 +22361,11 @@ async function loadDataFromAPI(){
     // Users
     const usersRes = await CredifyAPI.getUsers();
     if(usersRes && usersRes.users){
-      USERS = usersRes.users.map(u=>({ id:u.id, name:u.name, email:u.email, role:(u.role||'editor').toLowerCase() }));
+      USERS = usersRes.users.map(u=>{
+        const o={ id:u.id, _apiId:u.id, name:u.name, email:u.email, role:(u.role||'editor').toLowerCase(), active:u.active!==false };
+        ['firstName','lastName','preferredName','phone','mobile','title','company','division','employeeNumber','costCenter','timeZone','language'].forEach(k=>{ if(u[k]!=null && u[k]!=='') o[k]=u[k]; });
+        return o;
+      });
       persistUsers();
     }
     // Current user from the session. Bearer mode has it in memory; cookie/SSO
@@ -22346,6 +22433,12 @@ async function loadDataFromAPI(){
       }));
       saveBlocks();
     }
+    // Contacts (Contact Directory) — server is the source of truth when signed in.
+    const contactsRes = await CredifyAPI.getContacts();
+    if(contactsRes && contactsRes.contacts){
+      CLIENTS = contactsRes.contacts.map(c=>({ ...c, _apiId:c.id, notify:(c.notify==='sms'||c.notify==='both')?c.notify:'email' }));
+      persistClients();
+    }
   }catch(e){
     console.error('Failed to load from API:', e);
     if(typeof toast==='function') toast('Failed to load data from server');
@@ -22397,6 +22490,7 @@ function reloadFromLocalAndRender(){
   try{ GROUPS = loadGroups() || GROUPS || []; }catch(e){}
   try{ BLOCKS = loadBlocks() || BLOCKS || []; }catch(e){}
   try{ FORMS = loadForms() || FORMS || []; }catch(e){}
+  try{ CLIENTS = loadClients() || CLIENTS || []; }catch(e){}
   const apiUser = (window.CredifyAPI && CredifyAPI.getCurrentUser && CredifyAPI.getCurrentUser()) || null;
   if(apiUser && apiUser.id){
     CURRENT_USER_ID = apiUser.id;

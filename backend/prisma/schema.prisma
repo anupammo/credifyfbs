@@ -30,10 +30,11 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users  User[]
-  forms  Form[]
-  groups Group[]
-  blocks Block[]
+  users    User[]
+  forms    Form[]
+  groups   Group[]
+  blocks   Block[]
+  contacts Contact[]
 }
 
 model User {
@@ -43,6 +44,21 @@ model User {
   passwordHash   String
   role           Role     @default(EDITOR)
   organizationId String
+  // Profile fields edited in the builder's "Manage Users" panel. All optional so
+  // existing rows are unaffected; the display `name` stays the source of truth.
+  firstName      String?
+  lastName       String?
+  preferredName  String?
+  phone          String?
+  mobile         String?
+  title          String?
+  company        String?
+  division       String?
+  employeeNumber String?
+  costCenter     String?
+  timeZone       String?
+  language       String?
+  active         Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   deletedAt      DateTime?
@@ -132,6 +148,36 @@ model Block {
   organizationId String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+// External recipient (patient / guardian / referrer) the builder's "Contact
+// Directory" manages. Used as a delivery target when sharing forms. Org-scoped
+// and soft-deleted, mirroring User. `notify` is the delivery channel:
+// "email" | "sms" | "both". dob is kept as a plain ISO date string (no TZ math).
+model Contact {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  firstName      String?
+  lastName       String?
+  preferredName  String?
+  email          String?
+  phone          String?
+  mobile         String?
+  title          String?
+  company        String?
+  dob            String?
+  mrn            String?
+  timeZone       String?
+  language       String?
+  notify         String   @default("email")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
