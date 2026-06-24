@@ -17410,6 +17410,9 @@ function syncContactToBackend(contactId){
 }
 function deleteUserFromBackend(apiId){ if(typeof API_MODE!=='undefined' && API_MODE && apiId && window.CredifyAPI) CredifyAPI.deleteUser(apiId).then(r=>{ if(r&&r.error) console.error('User delete rejected:', r.error); }).catch(e=>console.error('User delete failed:', e)); }
 function deleteContactFromBackend(apiId){ if(typeof API_MODE!=='undefined' && API_MODE && apiId && window.CredifyAPI) CredifyAPI.deleteContact(apiId).then(r=>{ if(r&&r.error) console.error('Contact delete rejected:', r.error); }).catch(e=>console.error('Contact delete failed:', e)); }
+/* Bundled demo contacts use placeholder @example.com emails. On the WEB build the
+   backend is the only source of truth, so identify these to strip/skip them. */
+function isDemoContact(c){ return !!c && typeof c.email==='string' && /@example\.com$/i.test(c.email); }
 function seedDefaultClients(){
   CLIENTS=[
     {id:uid('cl'),name:'Jordan Rivera',email:'jordan.rivera@example.com',phone:'(619) 555-0210',dob:'1990-03-14',mrn:'CL-1001',notify:'email'},
@@ -20464,8 +20467,16 @@ if(isWebApp() && !offlineOptIn()){
 } else if(!USERS.length){
   seedDefaultUsers();
 }
+// Contacts: same rule as users. On the WEB build the backend is the source of
+// truth (loadDataFromAPI pulls real contacts), so never seed the @example.com
+// demo contacts and strip any stale ones from a prior offline visit.
 CLIENTS = loadClients() || [];
-if(!CLIENTS.length){ seedDefaultClients(); }
+if(isWebApp() && !offlineOptIn()){
+  const cleanedC = CLIENTS.filter(c=>!isDemoContact(c));
+  if(cleanedC.length!==CLIENTS.length){ CLIENTS = cleanedC; persistClients(); }
+} else if(!CLIENTS.length){
+  seedDefaultClients();
+}
 // Clinical roles / disciplines (SUD, Psychotherapy, …) — seed once on first run.
 CLINICAL_ROLES = loadClinicalRoles() || [];
 if(!CLINICAL_ROLES.length){ seedClinicalRoles(); }
