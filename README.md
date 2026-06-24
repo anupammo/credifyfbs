@@ -2,7 +2,7 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Branch](https://img.shields.io/badge/branch-v4.1-2ea44f)](./manifest.json)
+[![Branch](https://img.shields.io/badge/branch-v4.2-2ea44f)](./manifest.json)
 [![Frontend](https://img.shields.io/badge/frontend-Single--file_HTML%2FJS-f7df1e)](./app.html)
 [![Next.js](https://img.shields.io/badge/Next.js-16.2-black)](./backend)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178c6)](./backend)
@@ -251,10 +251,14 @@ Git / GitHub (`anupammo/credifyfbs`, `anupammo/credify-login`) · **XAMPP** (Win
 ```
 credifyfbs/
 │
-├── manifest.json                # v1.0 MV3 extension root (current branch)
+├── manifest.json                # v1.0 MV3 extension root
 ├── background.js                # Service worker — opens app window
 ├── newtab.html / newtab.js      # Host page + storage bridge
-├── app.html                     # Full form builder UI (~7 000 lines)
+├── app.html                     # Full form builder UI (~22 000 lines)
+├── fill.html                    # v4.1 public patient fill page (/f/<token>)
+├── errors/                      # v4.1 branded 404 / 403 / 50x pages (nginx error_page)
+├── deploy.sh                    # v4.2 one-command VM deploy + status/logs/db helpers
+├── .gitattributes               # force LF on *.sh so deploy.sh runs on the Linux VM
 ├── icons/                       # Extension toolbar icons
 │
 ├── backend/                     # ✅ v1.1 Next.js 16 API backend (scaffolded)
@@ -275,9 +279,17 @@ credifyfbs/
 │   │   ├── groups/
 │   │   │   ├── route.ts         # GET, POST
 │   │   │   └── [id]/route.ts    # PUT, DELETE
-│   │   └── blocks/
-│   │       ├── route.ts         # GET, POST
-│   │       └── [id]/route.ts    # PUT, DELETE
+│   │   ├── blocks/
+│   │   │   ├── route.ts         # GET, POST
+│   │   │   └── [id]/route.ts    # PUT, DELETE
+│   │   ├── contacts/            # v4.1 Contact Directory (DB-backed)
+│   │   │   ├── route.ts         # GET, POST
+│   │   │   └── [id]/route.ts    # PUT, DELETE (soft)
+│   │   └── links/               # v4.1 public form share links
+│   │       └── [token]/
+│   │           ├── route.ts        # GET (public: resolve token → form)
+│   │           ├── submit/route.ts # POST (public: store encrypted submission)
+│   │           └── revoke/route.ts # POST (auth: revoke)
 │   ├── lib/
 │   │   ├── db.ts                # Prisma singleton (dev hot-reload safe)
 │   │   ├── audit.ts             # auditLog() helper
@@ -1063,7 +1075,7 @@ app.html setItem() → postMessage → newtab.js → chrome.runtime.sendMessage
 > `docker compose` (`docker-backend-1` API on `:3000` + `docker-postgres-1`), **nginx**
 > reverse-proxy/static host, **pm2** for `credify-login`, and **Certbot** for TLS. The
 > **Cloud Run / Cloud SQL / Artifact Registry** pipeline below is the documented **target**,
-> not what's live today. Deploy = `git pull` → `docker compose -f docker-compose.prod.yml up -d --build backend` (API) and `cp app.html → /var/www/forms.credifyfast.com/index.html` (builder); schema changes apply via SQL until the Prisma 7 `prisma.config.ts` datasource move is done.
+> not what's live today. **One-command deploy:** [`./deploy.sh`](./deploy.sh) on the VM does it all — `git` sync → publish the frontend to the web root → rebuild the API container *only if `backend/` changed* → verify the live build. It also carries `status` / `logs` / `db` helpers and a full environment reference. (Manual equivalent: `git pull` → `docker compose -f docker-compose.prod.yml up -d --build backend` for the API + `cp app.html → /var/www/forms.credifyfast.com/index.html` for the builder; schema changes apply via SQL until the Prisma 7 `prisma.config.ts` datasource move is done.)
 
 ### Dockerfile (backend/)
 
@@ -1373,18 +1385,28 @@ hmac-secret       → HMAC_SECRET
 - [ ] Form analytics (completion rates, average scores)
 - [ ] GCP infrastructure provisioning (Terraform)
 
-### v4.2 — Submission Pipeline (planned)
+### v4.2 — Persistence, Weighting & DevOps · Submission Pipeline 🚧 In progress (current branch)
 
-> Encrypted submission storage + the public submit endpoint (`POST /api/links/:token/submit`) already shipped in **v4.1**; this phase builds out retrieval, export, and delivery.
+A round of "make it real" fixes — wiring stubbed UI to the live database, correcting a
+feature that never did what its label claimed, and removing per-deploy toil.
 
-- [ ] Submissions retrieval/list API + in-app responses viewer (decrypt server-side)
+**Shipped**
+- [x] **Save → database**: the toolbar **Save** button now persists through `CredifyAPI` (`updateForm`/`createForm`, encrypted `schema`) instead of the old `DB_SAVE` stub ("Saved — DB endpoint not wired yet"); offline shows an honest "Saved locally" message
+- [x] **Weighted completion**: the **Weightage** feature now actually drives "Form completed %" — `previewProgressPct()` (in-app) and the exported form's runtime (`data-weight` + weighted `computeProgress`/`wholeForm`) sum field weights, with an equal-count fallback when no weights are set (it previously counted every field equally)
+- [x] **Contact Directory** brought to parity with **Manage Users** — already DB write-through (`/api/contacts`); now also strips the `@example.com` demo contacts on the web build so real DB contacts are the source of truth
+- [x] **Topbar unified** — `.topbar-actions` stays right-aligned in Build mode (matches Preview); dropped the All-pages left-shift
+- [x] Inline brand **favicon** (data-URI SVG) across app / fill page / error pages (kills the `/favicon.ico` 404)
+- [x] **`deploy.sh`** — one-command VM deploy (pull → publish frontend → rebuild API only if `backend/` changed → verify) with `status`/`logs`/`db` helpers and a full env reference baked in
+
+**Submission Pipeline (planned)**
+- [ ] Submissions retrieval/list API + in-app responses viewer (decrypt server-side) — **Reports currently runs on in-memory sample data only**, not the `Submission` table
 - [ ] Export — CSV / PDF batch
 - [ ] Webhook delivery to EHR / third-party systems
 - [ ] Submission scoring engine (server-side, matches client preview logic)
 - [ ] Real-time share/submission notifications (Server-Sent Events)
 - [ ] Form version history (snapshot on every save) · email invitations for new users
 
-### v4.1 — Public Form Sharing + SSO/UX hardening ✅ Complete (current branch)
+### v4.1 — Public Form Sharing + SSO/UX hardening ✅ Complete
 
 Builds on v4 with a real patient-facing form-fill flow and a round of production hardening
 discovered while deploying to the GCP VM.
