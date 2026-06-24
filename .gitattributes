@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings so they run on the Linux VM
+# (a CRLF shebang line breaks bash).
+*.sh text eol=lf
+deploy.sh text eol=lf
