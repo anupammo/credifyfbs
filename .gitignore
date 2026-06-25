@@ -1,3 +1,9 @@
 
 # temp clone used to generate docs/credify-login-sso.patch
 .sso-*
+
+# local secrets — never commit
+docker/.env
+
+# generated copy of app.html (deploy / manual) — not source, would go stale
+index.html
