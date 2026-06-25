@@ -100,6 +100,9 @@ do_deploy() {
   sudo cp app.html "$WEB_ROOT/app.html"
   [ -f fill.html ] && sudo cp fill.html "$WEB_ROOT/fill.html"
   [ -d errors ]    && sudo cp errors/404.html errors/403.html errors/50x.html "$WEB_ROOT/"
+  for f in favicon.ico icon.png apple-icon.png; do
+    [ -f "$f" ] && sudo cp "$f" "$WEB_ROOT/"
+  done
 
   # 3) rebuild the API container only when backend/ changed (or FORCE_BACKEND=1)
   local rebuild=0
