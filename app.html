@@ -2042,6 +2042,23 @@
       return apiRequest(`/forms/${id}/share`);
     },
 
+    async roleShareForm(id, role, access) {
+      return apiRequest(`/forms/${id}/role-share`, {
+        method: 'POST',
+        body: JSON.stringify({ role, access })
+      });
+    },
+
+    async unroleShareForm(id, role) {
+      return apiRequest(`/forms/${id}/role-share?role=${encodeURIComponent(role)}`, {
+        method: 'DELETE'
+      });
+    },
+
+    async getFormRoleShares(id) {
+      return apiRequest(`/forms/${id}/role-share`);
+    },
+
     // Groups
     async getGroups() {
       return apiRequest('/groups');
@@ -18244,6 +18261,17 @@ function openShareModal(formId){
         renderShareList();
         refreshShareUserPicker();
       });
+      // Role grants — server stores the role uppercased (EDITOR); normalize back
+      // to the lowercase the local roleShares list uses.
+      CredifyAPI.getFormRoleShares(f._apiId||f.id).then(function(res){
+        if(!res || res.error || !Array.isArray(res.roleShares)) return;
+        if(SHARE_FORM_ID!==formId) return;
+        f.roleShares=res.roleShares.map(function(s){ return { role:String(s.role||'').toLowerCase(), access:String(s.access||'view').toLowerCase() }; });
+        if(typeof FORM!=='undefined' && FORM && FORM.id===f.id) FORM.roleShares=JSON.parse(JSON.stringify(f.roleShares));
+        persistForms();
+        renderShareList();
+        refreshShareRolePicker();
+      });
     }catch(e){}
   }
 }
@@ -18702,6 +18730,7 @@ function addRoleShare(){
   f.roleShares.push({role,access});
   f.updatedAt=Date.now();
   if(FORM.id===f.id) FORM.roleShares=JSON.parse(JSON.stringify(f.roleShares));
+  persistRoleShareToBackend(f, role, access);
   const members=USERS.filter(u=>u.role===role);
   members.forEach(u=>queueShareNotification({kind:'role',formId:f.id,formTitle:f.title||'Untitled form',role,userId:u.id,access,channel:'dashboard'}));
   persistForms();
@@ -18715,6 +18744,7 @@ function changeRoleShareAccess(role,newAccess){
   const r=f.roleShares.find(x=>x.role===role); if(!r) return;
   r.access=newAccess; f.updatedAt=Date.now();
   if(FORM.id===f.id) FORM.roleShares=JSON.parse(JSON.stringify(f.roleShares));
+  persistRoleShareToBackend(f, role, newAccess);
   persistForms(); renderFormsList();
   if(FORM.id===f.id){ applyRoleUI(); render(); }
   toast('Access updated');
@@ -18725,6 +18755,10 @@ function removeRoleShare(role){
   f.roleShares=f.roleShares.filter(x=>x.role!==role);
   f.updatedAt=Date.now();
   if(FORM.id===f.id) FORM.roleShares=JSON.parse(JSON.stringify(f.roleShares));
+  if(typeof API_MODE!=='undefined' && API_MODE && window.CredifyAPI){
+    var _sid=f._apiId||f.id;
+    if(String(_sid).indexOf('_')<0) CredifyAPI.unroleShareForm(_sid, role).then(function(r){ if(r&&r.error&&typeof toast==='function') toast('Removed locally, but server role unshare failed: '+r.error); });
+  }
   persistForms();
   renderShareList(); refreshShareRolePicker(); renderFormsList();
   // If removing the role share kicked the current user off the open form, move them off.
@@ -18900,12 +18934,39 @@ function refreshShareUserPicker(){
 function persistShareToBackend(f, userId, access){
   if(typeof API_MODE==='undefined' || !API_MODE || !window.CredifyAPI) return;
   if(!f || !userId) return;
+  // Resolve the teammate's SERVER id. Roster entries added in-session carry a
+  // local id (uid('u') → contains '_') until createUser syncs them; server users
+  // have a cuid (no '_'). You can only DB-share a user that exists server-side.
+  var u=(USERS||[]).find(function(x){return x.id===userId || x._apiId===userId;});
+  var targetId=(u && u._apiId) || userId;
+  if(String(targetId).indexOf('_')>=0){
+    if(typeof toast==='function') toast('That teammate isn’t saved on the server yet — they’ll get access once their account syncs.');
+    return; // keep the local grant; it re-syncs after the user is created server-side
+  }
   var serverId=f._apiId||f.id;
+  if(String(serverId).indexOf('_')>=0) return; // form not synced yet — local-only grant
   var acc=String(access||'view').toUpperCase();
   if(acc!=='EDIT' && acc!=='VIEW') acc='VIEW';
   try{
-    CredifyAPI.shareForm(serverId, userId, acc).then(function(r){
+    CredifyAPI.shareForm(serverId, targetId, acc).then(function(r){
       if(r && r.error && typeof toast==='function') toast('Saved locally, but server share failed: '+r.error);
+    });
+  }catch(e){}
+}
+
+/* Persist a role grant (e.g. all EDITORs) to the backend FormRoleShare table.
+   The server uppercases the role to match User.role; built-in roles resolve to
+   users, custom front-end roles are stored but won't match anyone server-side. */
+function persistRoleShareToBackend(f, role, access){
+  if(typeof API_MODE==='undefined' || !API_MODE || !window.CredifyAPI) return;
+  if(!f || !role) return;
+  var serverId=f._apiId||f.id;
+  if(String(serverId).indexOf('_')>=0) return; // form not synced yet — local-only grant
+  var acc=String(access||'view').toUpperCase();
+  if(acc!=='EDIT' && acc!=='VIEW') acc='VIEW';
+  try{
+    CredifyAPI.roleShareForm(serverId, role, acc).then(function(r){
+      if(r && r.error && typeof toast==='function') toast('Saved locally, but server role share failed: '+r.error);
     });
   }catch(e){}
 }
@@ -18961,7 +19022,12 @@ function removeShare(userId){
   if(FORM.id===f.id) FORM.shares=JSON.parse(JSON.stringify(f.shares));
   // Remove the grant on the server too, or the recipient keeps their access.
   if(typeof API_MODE!=='undefined' && API_MODE && window.CredifyAPI){
-    CredifyAPI.unshareForm(f._apiId||f.id, userId).then(function(r){ if(r&&r.error&&typeof toast==='function') toast('Removed locally, but server unshare failed: '+r.error); });
+    var _u=(USERS||[]).find(function(x){return x.id===userId || x._apiId===userId;});
+    var _tid=(_u && _u._apiId) || userId;
+    var _sid=f._apiId||f.id;
+    if(String(_sid).indexOf('_')<0 && String(_tid).indexOf('_')<0){
+      CredifyAPI.unshareForm(_sid, _tid).then(function(r){ if(r&&r.error&&typeof toast==='function') toast('Removed locally, but server unshare failed: '+r.error); });
+    }
   }
   persistForms();
   renderShareList();

@@ -51,20 +51,22 @@ export const GET = withAuth(
           updatedAt: true,
           ownerId: true,
           owner: { select: { id: true, name: true, email: true } },
-          // The current user's own grant (if any) — lets the builder resolve
-          // Edit/View access for shared (non-owner) users on load.
+          // The current user's own grant + any grant to their role — lets the
+          // builder resolve Edit/View access for shared (non-owner) users on load.
           shares: { where: { userId: req.user.sub }, select: { access: true } },
+          roleShares: { where: { role: req.user.role }, select: { access: true } },
         },
       }),
       prisma.form.count({ where }),
     ]);
 
-    // Flatten the single-row shares filter into a scalar `myAccess` the frontend
-    // reads directly; drop the raw shares array from the payload.
-    const shaped = forms.map(({ shares, ...f }) => ({
-      ...f,
-      myAccess: shares[0]?.access ?? null,
-    }));
+    // Flatten user + role grants into a scalar `myAccess` (strongest wins) the
+    // frontend reads directly; drop the raw arrays from the payload.
+    const shaped = forms.map(({ shares, roleShares, ...f }) => {
+      const grants = [shares[0]?.access, roleShares[0]?.access].filter(Boolean);
+      const myAccess = grants.includes("EDIT") ? "EDIT" : grants.length ? "VIEW" : null;
+      return { ...f, myAccess };
+    });
 
     return NextResponse.json({ forms: shaped, total, page, limit });
   })

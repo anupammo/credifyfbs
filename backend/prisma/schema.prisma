@@ -105,6 +105,7 @@ model Form {
   organization Organization @relation(fields: [organizationId], references: [id])
   group        Group?       @relation(fields: [groupId], references: [id])
   shares       FormShare[]
+  roleShares   FormRoleShare[]
   shareLinks   ShareLink[]
   submissions  Submission[]
   auditLogs    AuditLog[]
@@ -125,6 +126,22 @@ model FormShare {
 
   @@unique([formId, userId])
   @@index([userId])
+}
+
+// Form shared with a whole role (e.g. all EDITORs). `role` holds the user Role
+// value ("ADMIN" | "EDITOR" | "VIEWER") so it matches User.role directly. Custom
+// front-end roles can be stored too, but only built-in roles resolve to users
+// server-side (the backend has no concept of custom roles).
+model FormRoleShare {
+  id     String      @id @default(cuid())
+  formId String
+  role   String
+  access ShareAccess
+
+  form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, role])
+  @@index([formId])
 }
 
 model Group {

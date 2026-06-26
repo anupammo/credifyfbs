@@ -13,18 +13,26 @@ type Ctx = { params: Record<string, string> };
 async function canAccess(userId: string, orgId: string, formId: string, role: string) {
   const form = await prisma.form.findFirst({
     where: { id: formId, organizationId: orgId, deletedAt: null },
-    include: { shares: { where: { userId } } },
+    include: {
+      shares: { where: { userId } },
+      roleShares: { where: { role } }, // a grant to THIS user's role
+    },
   });
-  if (!form) return { form: null, permitted: false, canEdit: false };
+  if (!form) return { form: null, permitted: false, canEdit: false, myAccess: null };
 
   const isOwner = form.ownerId === userId;
-  const share = form.shares[0];
   const isAdmin = role === "ADMIN";
 
-  const canEdit = isOwner || isAdmin || share?.access === "EDIT";
-  const permitted = isOwner || isAdmin || !!share;
+  // Effective grant = strongest of the direct user share and the role share.
+  const grants = [form.shares[0]?.access, form.roleShares[0]?.access].filter(Boolean);
+  const hasEdit = grants.includes("EDIT");
+  const hasAny = grants.length > 0;
 
-  return { form, permitted, canEdit };
+  const canEdit = isOwner || isAdmin || hasEdit;
+  const permitted = isOwner || isAdmin || hasAny;
+  const myAccess = isOwner || isAdmin ? null : hasEdit ? "EDIT" : hasAny ? "VIEW" : null;
+
+  return { form, permitted, canEdit, myAccess };
 }
 
 // GET /api/forms/:id
@@ -32,7 +40,7 @@ export const GET = withAuth(async (req: AuthedRequest, { params }: Ctx) => {
   const limited = dataLimiter(req);
   if (limited) return limited;
 
-  const { form, permitted } = await canAccess(req.user.sub, req.user.orgId, params.id, req.user.role);
+  const { form, permitted, myAccess } = await canAccess(req.user.sub, req.user.orgId, params.id, req.user.role);
   if (!form || !permitted) {
     return NextResponse.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
   }
@@ -46,9 +54,9 @@ export const GET = withAuth(async (req: AuthedRequest, { params }: Ctx) => {
       description: form.description,
       groupId: form.groupId,
       ownerId: form.ownerId,
-      // The current user's own grant (canAccess included shares filtered to them),
+      // The current user's effective grant (direct user share OR role share),
       // so a shared user resolves Edit/View on the form detail too.
-      myAccess: form.shares?.[0]?.access ?? null,
+      myAccess,
       scoringSections: form.scoringSections,
       schema: JSON.parse(schema),
       createdAt: form.createdAt,
