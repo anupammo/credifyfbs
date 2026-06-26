@@ -14286,7 +14286,12 @@ function resetFormStyle(){
   }
   if(typeof saveForm === 'function') saveForm();
   renderFormStyleModal();
-  if(MODE === 'preview' && typeof renderPreview === 'function') renderPreview();
+  // Refresh the editing surface so the reset shows immediately — Preview
+  // re-renders the preview, Build re-renders the canvas (mirrors setFormStyle).
+  // Previously this only re-rendered in Preview, so a reset in Build mode left
+  // the canvas showing the old style and looked like it did nothing.
+  if(MODE === 'preview'){ if(typeof renderPreview === 'function') renderPreview(); }
+  else if(typeof renderCanvas === 'function') renderCanvas();
 }
 
 /* Apply resolved style to a .preview-form element by setting the CSS vars
