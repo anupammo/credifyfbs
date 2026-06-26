@@ -1,38 +1,78 @@
 ---
 name: Bug report
 about: Create a report to help us improve
-title: ''
+title: BUG
 labels: ''
 assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+name: "🐛 Bug report"
+description: Report something that isn't working as expected
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please fill in as much as you can — it speeds up a fix.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
-
-**Expected behavior**
-A clear and concise description of what you expected to happen.
-
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
-
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
-
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
-
-**Additional context**
-Add any other context about the problem here.
+        ⚠️ **Do not include patient data, real credentials, tokens, or other secrets.** Redact anything sensitive in screenshots and logs. For a security vulnerability, **do not open an issue** — see [SECURITY.md](../blob/main/SECURITY.md).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      options:
+        - Frontend — Form Builder (app.html)
+        - Frontend — Patient fill page (fill.html)
+        - Backend API (chrome.credifyfast.com/api)
+        - Chrome extension
+        - Deployment / infrastructure
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I share a form with a role, the recipient still can't edit…
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps so we can see it ourselves.
+      placeholder: |
+        1. Sign in as an Editor
+        2. Open a form you own → Share
+        3. Add role "Editor" with Edit access
+        4. Reload as another Editor
+    validations:
+      required: true
+  - type: input
+    id: role
+    attributes:
+      label: Signed-in role (if relevant)
+      description: Admin / Editor / Viewer — many bugs are permission-specific.
+      placeholder: Editor
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Browser + version, OS, and whether it's production or local.
+      placeholder: Chrome 126 · Windows 11 · production (forms.credifyfast.com)
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console / network errors
+      description: Paste relevant browser console output or the API response (status + body). Redact secrets.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: App version / branch
+      description: e.g. v4.3 (shown in the builder header or your deployed branch).
+      placeholder: v4.3
