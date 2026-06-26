@@ -23,7 +23,7 @@ Thanks for contributing to the **Credify Form Builder Studio**. This guide cover
 
 ## Ground rules
 
-- **Be respectful and constructive.** Assume good intent in reviews.
+- **Be respectful and constructive.** Assume good intent in reviews. This project follows a [Code of Conduct](CODE_OF_CONDUCT.md) — by participating you agree to uphold it.
 - **Small, focused changes.** One concern per PR. If you spot an unrelated issue, note it separately rather than bundling it in.
 - **Match the surrounding code.** This repo has a strong existing style; consistency beats personal preference.
 - **Never commit secrets.** `docker/.env`, real credentials, tokens, and `index.html` are git-ignored — keep it that way.
