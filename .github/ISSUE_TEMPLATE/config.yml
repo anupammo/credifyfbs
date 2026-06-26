@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/anupammo/credifyfbs/security/advisories/new
+    about: Please report vulnerabilities privately — do NOT open a public issue. See SECURITY.md.
+  - name: 📧 Contact the maintainer
+    url: mailto:support@credifyfast.com
+    about: For private questions, security reports, or anything not suited to a public issue.
+  - name: 📖 Documentation
+    url: https://github.com/anupammo/credifyfbs/blob/main/README.md
+    about: Architecture, data model, and setup live in the README and docs/.
