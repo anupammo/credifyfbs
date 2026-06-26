@@ -1,4 +1,3 @@
-@@ -0,0 +1,63 @@
 # Security Policy
 
 CredifyFBS handles form submissions that can include **personal and patient (PII/PHI) data**. We take security seriously and appreciate responsible disclosure.
