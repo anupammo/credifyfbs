@@ -1,0 +1,56 @@
+name: "✨ Feature request"
+description: Suggest a new capability or an improvement
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Please describe the problem first, then the proposed solution — it helps us find the best fix, which may differ from the first idea.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      options:
+        - Frontend — Form Builder (app.html)
+        - Frontend — Patient fill page (fill.html)
+        - Backend API
+        - Chrome extension
+        - Reporting / Scoring / Weightage
+        - Sharing & permissions
+        - Notifications (email/SMS)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: The user need or pain point. "As a <role>, I want… so that…"
+      placeholder: As an admin, I want to see submitted form responses so that I can review patient answers.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What you'd like to happen. Sketches, flows, or examples welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you've thought about.
+  - type: dropdown
+    id: priority
+    attributes:
+      label: How important is this to you?
+      options:
+        - Nice to have
+        - Would significantly help
+        - Blocking my work
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — related issues, screenshots, links. Do not include patient data or secrets.
