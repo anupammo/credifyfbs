@@ -20464,7 +20464,7 @@ function renderFormsList(){
     html+=`<div class="form-row-item${isCurrent?' current':''}"${dragAttr}>
       <label class="form-row-check" title="Select for a bundle" onclick="event.stopPropagation()"><input type="checkbox" ${FORM_SELECT.has(f.id)?'checked':''} onchange="formRowSelectToggle('${f.id}',this.checked,event)"></label>
       <div class="form-row-info" onclick="loadFormIntoEditor('${f.id}'); closeModal('forms-modal')">
-        <div class="form-row-title">${title}${isCurrent?` <span class="form-row-badge">${canEdit?'Editing':'Viewing'}</span>`:''} ${accessPill}</div>
+        <div class="form-row-title">${title} ${accessPill}</div>
         <div class="form-row-meta">${n} field${n===1?'':'s'} · ${timeAgo(f.updatedAt)}</div>
         <div class="form-row-owner">Owned by ${esc(ownerLabel)}${shareTotalCount(f)?' · Shared with '+shareTotalCount(f):''}</div>
         ${chip?`<div class="form-row-chip-line">${chip}</div>`:''}
