@@ -46,6 +46,9 @@ export const GET = withAuth(async (req: AuthedRequest, { params }: Ctx) => {
       description: form.description,
       groupId: form.groupId,
       ownerId: form.ownerId,
+      // The current user's own grant (canAccess included shares filtered to them),
+      // so a shared user resolves Edit/View on the form detail too.
+      myAccess: form.shares?.[0]?.access ?? null,
       scoringSections: form.scoringSections,
       schema: JSON.parse(schema),
       createdAt: form.createdAt,

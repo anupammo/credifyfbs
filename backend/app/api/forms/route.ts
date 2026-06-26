@@ -49,13 +49,24 @@ export const GET = withAuth(
           scoringSections: true,
           createdAt: true,
           updatedAt: true,
+          ownerId: true,
           owner: { select: { id: true, name: true, email: true } },
+          // The current user's own grant (if any) — lets the builder resolve
+          // Edit/View access for shared (non-owner) users on load.
+          shares: { where: { userId: req.user.sub }, select: { access: true } },
         },
       }),
       prisma.form.count({ where }),
     ]);
 
-    return NextResponse.json({ forms, total, page, limit });
+    // Flatten the single-row shares filter into a scalar `myAccess` the frontend
+    // reads directly; drop the raw shares array from the payload.
+    const shaped = forms.map(({ shares, ...f }) => ({
+      ...f,
+      myAccess: shares[0]?.access ?? null,
+    }));
+
+    return NextResponse.json({ forms: shaped, total, page, limit });
   })
 );
 

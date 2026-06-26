@@ -2032,6 +2032,16 @@
       });
     },
 
+    async unshareForm(id, userId) {
+      return apiRequest(`/forms/${id}/share?userId=${encodeURIComponent(userId)}`, {
+        method: 'DELETE'
+      });
+    },
+
+    async getFormShares(id) {
+      return apiRequest(`/forms/${id}/share`);
+    },
+
     // Groups
     async getGroups() {
       return apiRequest('/groups');
@@ -17558,12 +17568,16 @@ function getAccess(form){
   if(isAdmin()) return 'admin';
   const uid=CURRENT_USER_ID;
   if(form.ownerId===uid) return 'owner';
+  // Server-provided effective access for THIS user (authoritative — it crosses
+  // devices, unlike the localStorage `shares` list). FormShare access is stored
+  // uppercase EDIT/VIEW, so normalize to the lowercase getAccess() returns.
+  if(form.myAccess) return String(form.myAccess).toLowerCase();
   const share=(form.shares||[]).find(s=>s.userId===uid);
-  if(share) return share.access; // 'edit' or 'view'
+  if(share) return String(share.access||'').toLowerCase(); // 'edit' or 'view'
   // Role share: the form was shared with this user's role (06-09-26).
   const me=currentUser();
   const rshare=me && (form.roleShares||[]).find(r=>r.role===me.role);
-  if(rshare) return rshare.access;
+  if(rshare) return String(rshare.access||'').toLowerCase();
   // A form flagged `restricted` is visible ONLY to its owner/admin and the
   // users/roles explicitly assigned above (the user/role shares). No broad
   // access is granted — that is the whole point of restricting.
@@ -18216,6 +18230,22 @@ function openShareModal(formId){
   refreshShareContactPicker();
   enhanceDropdowns(document.getElementById('share-modal'));
   openModal('share-modal');
+  // Refresh the user grants from the server so the dialog is authoritative even
+  // on a device whose localStorage never saw them. Access comes back uppercase
+  // (EDIT/VIEW) — normalize to the lowercase the local share list uses.
+  if(typeof API_MODE!=='undefined' && API_MODE && window.CredifyAPI && (f._apiId||f.id)){
+    try{
+      CredifyAPI.getFormShares(f._apiId||f.id).then(function(res){
+        if(!res || res.error || !Array.isArray(res.shares)) return;
+        if(SHARE_FORM_ID!==formId) return; // dialog moved on
+        f.shares=res.shares.map(function(s){ return { userId:s.userId, access:String(s.access||'view').toLowerCase() }; });
+        if(typeof FORM!=='undefined' && FORM && FORM.id===f.id) FORM.shares=JSON.parse(JSON.stringify(f.shares));
+        persistForms();
+        renderShareList();
+        refreshShareUserPicker();
+      });
+    }catch(e){}
+  }
 }
 
 /* ===== Share to Roles / Users / Contacts (06-09-26) =====
@@ -18864,6 +18894,22 @@ function refreshShareUserPicker(){
   reEnhanceDropdown(sel);
 }
 
+/* Persist a per-user form share to the backend FormShare table (upsert). Access
+   is normalized to the uppercase EDIT/VIEW the API expects. No-op when offline /
+   not signed in — the localStorage copy still holds and re-syncs later. */
+function persistShareToBackend(f, userId, access){
+  if(typeof API_MODE==='undefined' || !API_MODE || !window.CredifyAPI) return;
+  if(!f || !userId) return;
+  var serverId=f._apiId||f.id;
+  var acc=String(access||'view').toUpperCase();
+  if(acc!=='EDIT' && acc!=='VIEW') acc='VIEW';
+  try{
+    CredifyAPI.shareForm(serverId, userId, acc).then(function(r){
+      if(r && r.error && typeof toast==='function') toast('Saved locally, but server share failed: '+r.error);
+    });
+  }catch(e){}
+}
+
 function addShare(){
   const f=FORMS.find(x=>x.id===SHARE_FORM_ID);
   if(!f) return;
@@ -18877,6 +18923,9 @@ function addShare(){
   // Keep the open form's in-memory copy in sync, or the next render()/saveForm()
   // would overwrite this share with the stale working copy.
   if(FORM.id===f.id) FORM.shares=JSON.parse(JSON.stringify(f.shares));
+  // Persist to the server so the grant actually reaches the recipient — not just
+  // this browser's localStorage. FormShare access is uppercase (EDIT/VIEW).
+  persistShareToBackend(f, userId, access);
   const _u=USERS.find(x=>x.id===userId);
   queueShareNotification({kind:'user',formId:f.id,formTitle:f.title||'Untitled form',userId,access,channel:'dashboard'});
   persistForms();
@@ -18894,6 +18943,8 @@ function changeShareAccess(userId,newAccess){
   s.access=newAccess;
   f.updatedAt=Date.now();
   if(FORM.id===f.id) FORM.shares=JSON.parse(JSON.stringify(f.shares));
+  // Upsert the new access on the server (shareForm is an upsert backend-side).
+  persistShareToBackend(f, userId, newAccess);
   persistForms();
   renderFormsList();
   // If the share we just edited is the current user on the currently-open
@@ -18908,6 +18959,10 @@ function removeShare(userId){
   f.shares=(f.shares||[]).filter(s=>s.userId!==userId);
   f.updatedAt=Date.now();
   if(FORM.id===f.id) FORM.shares=JSON.parse(JSON.stringify(f.shares));
+  // Remove the grant on the server too, or the recipient keeps their access.
+  if(typeof API_MODE!=='undefined' && API_MODE && window.CredifyAPI){
+    CredifyAPI.unshareForm(f._apiId||f.id, userId).then(function(r){ if(r&&r.error&&typeof toast==='function') toast('Removed locally, but server unshare failed: '+r.error); });
+  }
   persistForms();
   renderShareList();
   refreshShareUserPicker();
@@ -22424,6 +22479,7 @@ async function loadDataFromAPI(){
         scoringSections: f.scoringSections || (f.schema && f.schema.scoringSections) || [],
         ownerId: f.ownerId || (f.owner && f.owner.id),
         shares: f.shares || [],
+        myAccess: f.myAccess || null,   // server-resolved EDIT/VIEW for the current user
         groupId: f.groupId,
         createdAt: f.createdAt ? new Date(f.createdAt).getTime() : Date.now(),
         updatedAt: f.updatedAt ? new Date(f.updatedAt).getTime() : Date.now()
