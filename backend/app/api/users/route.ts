@@ -18,30 +18,36 @@ const userSelect = {
   timeZone: true, language: true, createdAt: true,
 } as const;
 
-// GET /api/users — Admin only
-export const GET = withAuth(
-  withRole("ADMIN", async (req: AuthedRequest) => {
-    const limited = dataLimiter(req);
-    if (limited) return limited;
+// Minimal roster fields — enough to populate the form-sharing picker. Non-admins
+// get only this (no profile/PII beyond name+email); admins get the full profile.
+const rosterSelect = {
+  id: true, email: true, name: true, role: true, active: true,
+} as const;
 
-    const url = new URL(req.url);
-    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
-    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") ?? "25")));
+// GET /api/users — any signed-in org member (needed to share forms with
+// teammates). Admins receive the full profile; everyone else the basic roster.
+export const GET = withAuth(async (req: AuthedRequest) => {
+  const limited = dataLimiter(req);
+  if (limited) return limited;
 
-    const [users, total] = await Promise.all([
-      prisma.user.findMany({
-        where: { organizationId: req.user.orgId, deletedAt: null },
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { createdAt: "asc" },
-        select: userSelect,
-      }),
-      prisma.user.count({ where: { organizationId: req.user.orgId, deletedAt: null } }),
-    ]);
+  const isAdmin = req.user.role === "ADMIN";
+  const url = new URL(req.url);
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
+  const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") ?? "25")));
 
-    return NextResponse.json({ users, total, page, limit });
-  })
-);
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      where: { organizationId: req.user.orgId, deletedAt: null },
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: "asc" },
+      select: isAdmin ? userSelect : rosterSelect,
+    }),
+    prisma.user.count({ where: { organizationId: req.user.orgId, deletedAt: null } }),
+  ]);
+
+  return NextResponse.json({ users, total, page, limit });
+});
 
 const inviteSchema = z.object({
   email: z.string().email(),
