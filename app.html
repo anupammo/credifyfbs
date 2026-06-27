@@ -22719,12 +22719,37 @@ function loginOffline(){
   updateAuthUI();
   if(typeof toast==='function') toast('Working offline — changes saved locally');
 }
+/* Wipe every per-user data cache (profile, roster, forms, groups, blocks,
+   contacts, bundles, …) from localStorage AND memory. Called on sign-out and
+   when a DIFFERENT user signs in on the same browser, so the previous user's
+   data never shows — not even for the 5–7s the API takes to load. Pure UI prefs
+   (panel pins, wizard progress) are intentionally left alone. */
+function clearUserScopedCache(){
+  try{
+    [CURRENT_USER_KEY, USERS_KEY, FORMS_KEY, LAST_FORM_KEY, OLD_DRAFT_KEY,
+     GROUPS_KEY, BLOCKS_KEY, CLIENTS_KEY, LOCATIONS_KEY, BUNDLES_KEY,
+     SHARE_NOTIF_KEY, IMPORTS_KEY, SHARED_PROFILE_KEY].forEach(function(k){
+      try{ localStorage.removeItem(k); }catch(e){}
+    });
+  }catch(e){}
+  // Reset in-memory state too, so nothing stale renders before the API repopulates.
+  try{ CURRENT_USER_ID=null; }catch(e){}
+  try{ if(typeof USERS!=='undefined') USERS=[]; }catch(e){}
+  try{ if(typeof FORMS!=='undefined') FORMS=[]; }catch(e){}
+  try{ if(typeof GROUPS!=='undefined') GROUPS=[]; }catch(e){}
+  try{ if(typeof BLOCKS!=='undefined') BLOCKS=[]; }catch(e){}
+  try{ if(typeof CLIENTS!=='undefined') CLIENTS=[]; }catch(e){}
+  try{ if(typeof LOCATIONS!=='undefined') LOCATIONS=[]; }catch(e){}
+  try{ if(typeof BUNDLES!=='undefined') BUNDLES=[]; }catch(e){}
+}
+
 async function doLogout(){
   // On the web, clear the shared credify-login cookie centrally, then return to
   // the central login page. In the extension, fall back to the in-app modal.
   if(isWebApp() && !offlineOptIn()){
     try{ await fetch(LOGIN_URL + '/api/auth/logout', { method:'POST', credentials:'include' }); }catch(e){}
     try{ await CredifyAPI.logout(); }catch(e){}   // also clear any bearer session
+    try{ clearUserScopedCache(); }catch(e){}       // don't leave this user's data for the next one
     API_MODE=false; updateApiStatus(false); updateAuthUI();
     goToLogin();
     return;
@@ -22761,12 +22786,16 @@ async function _credifyInit(){
   // Pick up a session handed back from the central login page, if present.
   try{ await ingestSsoTokens(); }catch(e){}
 
-  const enterApiMode = () => {
+  const enterApiMode = (holdGate) => {
     API_MODE=true;
     try{ sessionStorage.removeItem('credify_login_redirects'); }catch(e){}
-    hideSsoGate();
+    // Same user → reveal instantly with their cached data (it's theirs), and
+    // refresh in the background. Different/fresh user → keep the gate up until
+    // the API load finishes, so neither the previous user's data nor an empty
+    // state ever flashes. The 9s safety timeout still lifts the gate if it hangs.
+    if(!holdGate) hideSsoGate();
     updateAuthUI();
-    loadDataFromAPI().then(()=>{ reloadFromLocalAndRender(); updateApiStatus(true); updateAuthUI(); });
+    loadDataFromAPI().then(()=>{ reloadFromLocalAndRender(); if(holdGate) hideSsoGate(); updateApiStatus(true); updateAuthUI(); });
   };
 
   // ── Extension (non-web): bearer session, else the in-app modal ──────────────
@@ -22796,7 +22825,19 @@ async function _credifyInit(){
   // login.credifyfast.com (NO in-app popup, ever). The gate stays up meanwhile.
   const ssoUser = await checkLoginSession();
   if(ssoUser === 'error'){ showGateError(); return; }   // login service unreachable → show a manual "Sign in" link, never freeze
-  if(ssoUser){ enterApiMode(); return; }
+  if(ssoUser){
+    // Is the same person still signed in on this browser? Compare by email
+    // (the login service and builder backend assign different user ids, but
+    // email is stable across both). If it's a DIFFERENT user, drop the cached
+    // data first and hold the gate up until the new user's data loads.
+    var cachedEmail='';
+    try{ cachedEmail=((typeof USERS!=='undefined'?USERS:[]).find(function(u){return u.id===CURRENT_USER_ID;})||{}).email||''; }catch(e){}
+    var newEmail=(ssoUser.email||'').toLowerCase();
+    var sameUser = !!cachedEmail && !!newEmail && cachedEmail.toLowerCase()===newEmail;
+    if(!sameUser && cachedEmail) clearUserScopedCache();   // different user → wipe the previous one's data
+    enterApiMode(!sameUser);   // hold the gate (no stale/empty flash) unless it's the same user
+    return;
+  }
   goToLogin();
 }
 // Restore the user's last side-panel pin layout before the app paints.
