@@ -7416,6 +7416,17 @@ function evalShowIf(cond){
     const answered = previewAnswerFilled(f);
     return cond.op==='any' ? answered : !answered;
   }
+  // Controlling field is unanswered → a VALUE comparison (is / is not / contains /
+  // >, < …) can't be "met", so the dependent field stays hidden. This matches the
+  // feature contract ("show ONLY when answers meet a condition"), the numeric path,
+  // and the cross-form bridge — fixing the glitch where negative operators
+  // (is-not / doesn't-contain / doesn't-include) revealed a field before the user
+  // had answered. Explicit presence checks still resolve here.
+  if(!previewAnswerFilled(f)){
+    if(cond.op==='empty')     return true;   // text/label "is empty"
+    if(cond.op==='unchecked') return true;   // toggle/checkbox "is off"
+    return false;
+  }
   if(f.type==='checkboxes'){
     const set = (ans instanceof Set) ? ans : new Set();
     if(Array.isArray(cond.value)){
