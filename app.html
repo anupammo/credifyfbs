@@ -13402,13 +13402,23 @@ function onPreviewAnswerChange(e){
     } else if(field.type==='number' || field.type==='range'){
       const n=Number(t.value);
       PREVIEW_ANSWERS[fieldId]=(t.value===''||isNaN(n))?null:n;
-    } else if(field.type==='phone' && field.phoneExt){
+    } else if(field.type==='phone'){
+      // The phone control masks its display to digits-only formatting; store the
+      // SAME masked value so blocked characters (e.g. a typed letter) never
+      // persist invisibly and silently count toward scoring / "filled" checks.
+      // We re-derive the masked value here via formatUSPhone() rather than trust
+      // the raw input string, because this handler runs BEFORE onPreviewPhoneInput
+      // on the same event (so t.value may still hold the un-stripped character).
       const wrap=t.closest('[data-field-id]');
       const main=wrap?wrap.querySelector('.pf-phone-main'):null;
-      const ext=wrap?wrap.querySelector('.pf-phone-ext-in'):null;
-      const mv=main?String(main.value||'').trim():'';
-      const xv=ext?String(ext.value||'').trim():'';
-      PREVIEW_ANSWERS[fieldId]= mv ? (xv?mv+' x'+xv:mv) : (xv?'x'+xv:null);
+      const mv=formatUSPhone(main?main.value:(t.value||''));   // letters → ''
+      if(field.phoneExt){
+        const ext=wrap?wrap.querySelector('.pf-phone-ext-in'):null;
+        const xv=ext?String(ext.value||'').replace(/\D/g,'').trim():'';
+        PREVIEW_ANSWERS[fieldId]= mv ? (xv?mv+' x'+xv:mv) : (xv?'x'+xv:null);
+      } else {
+        PREVIEW_ANSWERS[fieldId]= mv || null;
+      }
     } else if(field.type==='address'){
       const aw=t.closest('[data-field-id]');
       PREVIEW_ANSWERS[fieldId]= aw ? (addrJoin(aw)||null) : null;
