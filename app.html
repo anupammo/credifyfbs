@@ -13629,7 +13629,27 @@ function updatePreviewScores(){
    available, so multi-page totals are correct.
    For radio/select: a single option index → its score.
    For checkboxes: sum of every checked option's score. */
+/* True when the field is currently MOUNTED in the preview and its input fails
+   validation (bad email / phone / url / number / required-empty …). Invalid
+   input must not earn points. A field that isn't mounted (e.g. on another page)
+   can't be DOM-checked, so it's treated as valid — its value passed validation
+   when it was entered, and updatePreviewScores intentionally scores off-page
+   fields from the stored answer. */
+function previewFieldInvalidNow(field){
+  if(!field || typeof document==='undefined') return false;
+  try{
+    const sel='.pf-field[data-field-id="'+((window.CSS&&CSS.escape)?CSS.escape(field.id):field.id)+'"]';
+    const wrap=document.querySelector(sel);
+    if(!wrap) return false;                 // not on the current page → can't DOM-validate
+    return !previewFieldValidity(wrap).ok;   // honors cond-hidden (always ok) + required/format
+  }catch(e){ return false; }
+}
+
 function scoreForField(field){
+  // Don't award points for a field whose current input is invalid (e.g. a
+  // malformed email "4" or phone "(4"). Mirrors the visible validation error so
+  // the score only ever reflects valid, properly-filled answers.
+  if(previewFieldInvalidNow(field)) return 0;
   if(field && field.type==='matrix') return matrixFieldScore(field);
   if(!isScoreable(field)){
     // Rules-based scoring for any other value field (phone, text, number, date…).
