@@ -3222,6 +3222,7 @@ select.addr-part{appearance:auto;-webkit-appearance:auto;height:auto;min-height:
 .form-row-actions button{width:30px;height:30px;border:1px solid var(--border);background:var(--white);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);transition:all .12s}
 .form-row-actions button svg{width:15px;height:15px}
 .form-row-actions .edit:hover{border-color:var(--green-primary);color:var(--green-primary)}
+.form-row-actions .sysadd:hover{border-color:var(--green-primary);color:var(--green-primary)}
 .form-row-actions .del:hover{border-color:var(--problem);background:var(--problem-soft);color:var(--problem)}
 
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--green-deep);color:#fff;padding:11px 20px;border-radius:999px;font-size:13px;font-weight:500;box-shadow:var(--shadow-lg);opacity:0;transition:all .25s;z-index:200;pointer-events:none}
@@ -11200,6 +11201,32 @@ function insertSystemForm(src){
   if(typeof renderPreviewIfNeeded==='function') renderPreviewIfNeeded();
   if(typeof closeModal==='function') closeModal('instruments-modal');
   if(typeof toast==='function') toast((src.title||'System form')+' inserted \u2014 '+(src.rows||[]).length+' rows');
+}
+
+/* Promote an existing form INTO the System Forms library. Tags it with a custom
+   (non-built-in) sysOverrideKey + a sysGroup so effectiveInstruments() surfaces
+   it as a custom system form; the tag also removes it from the My-Forms lists
+   (which filter on !sysOverrideKey). Group is auto-picked: scored forms land in
+   Screening forms, everything else in Intake & assessment templates. Persists
+   locally and to the backend (the tag rides inside the form schema blob). */
+function addFormToSystemForms(formId){
+  const f=(typeof FORMS!=='undefined'?FORMS:[]).find(function(x){return x && x.id===formId;});
+  if(!f){ if(typeof toast==='function') toast('Form not found'); return; }
+  if(typeof canEditForm==='function' && !canEditForm(f)){ if(typeof toast==='function') toast('You don\u2019t have permission to change this form'); return; }
+  if(f.sysOverrideKey){ if(typeof toast==='function') toast('Already in System Forms'); return; }
+  f.sysOverrideKey='custom_'+uid('sys');                 // never collides with a built-in instrument key
+  const scored=(f.scoringSections||[]).some(function(s){return s && (s.fieldIds||[]).length;});
+  f.sysGroup=scored?'screener':'template';
+  f.updatedAt=Date.now();
+  if(typeof FORM!=='undefined' && FORM && FORM.id===f.id){ FORM.sysOverrideKey=f.sysOverrideKey; FORM.sysGroup=f.sysGroup; }
+  persistForms();
+  // Mirror to the backend - sysOverrideKey/sysGroup persist inside the schema blob.
+  if(typeof API_MODE!=='undefined' && API_MODE && typeof pushFormToDatabase==='function'){
+    try{ Promise.resolve(pushFormToDatabase(f)).catch(function(){}); }catch(e){}
+  }
+  if(typeof renderFormsList==='function') renderFormsList();
+  if(document.getElementById('instruments-list') && typeof renderInstruments==='function') renderInstruments();
+  if(typeof toast==='function') toast('\u201c'+(f.title||'Form')+'\u201d added to System Forms \u2014 '+(scored?'Screening':'Templates'));
 }
 
 /* ── System-form open helpers (Preview / deferred-edit) ──────────────────────
@@ -20513,6 +20540,7 @@ function renderFormsList(){
       </div>
       <div class="form-row-actions">
         ${canShare?`<button class="share" title="Share" onclick="closeModal('forms-modal');openShareModal('${f.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>`:''}
+        ${canEdit?`<button class="sysadd" title="Add to System Forms library" onclick="addFormToSystemForms('${f.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg></button>`:''}
         <button class="edit${canEdit?'':' viewonly'}" title="${canEdit?'Edit':'View only'}" onclick="loadFormIntoEditor('${f.id}'); closeModal('forms-modal')">${canEdit
           ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`
           : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`}</button>
