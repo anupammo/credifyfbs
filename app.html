@@ -7963,8 +7963,11 @@ function dispValueUI(i, f, c){
     const opts = (f.options&&f.options.length) ? f.options : (f.type==='state' ? US_STATES : []);
     const isTextOp=(c.op==='seq'||c.op==='sneq'||c.op==='contains'||c.op==='ncontains');
     if(isTextOp){
+      // Pick the option from a dropdown of this field's choices — no typing.
+      const curV = (c.value!=null && !Array.isArray(c.value)) ? String(c.value) : '';
+      const optsHTML = opts.map(o=>`<option value="${esc(String(o))}"${curV===String(o)?' selected':''}>${esc(String(o))}</option>`).join('');
       return dispOpSelect(i,c,opsList) + `
-        <input type="text" class="disp-val" value="${esc(c.value!=null&&!Array.isArray(c.value)?c.value:'')}" oninput="dispSetVal(${i},this.value)" placeholder="option text">`;
+        <select class="disp-val enhance-dd dd-search" onchange="dispSetVal(${i},this.value)"><option value="">— choose an option —</option>${optsHTML}</select>`;
     }
     const sel = Array.isArray(c.value)?c.value.map(Number):(c.value!=null&&c.value!==''?[Number(c.value)]:[]);
     // Long option lists (e.g. State's 50+) read far better as a searchable
