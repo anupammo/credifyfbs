@@ -11460,6 +11460,7 @@ function renderInstruments(){
       +'<button class="btn" style="flex:none" onclick="previewInstrument(\''+i.key+'\')">Preview</button>'
       +((typeof hasPerm==='function' && hasPerm('manageSystemForms'))?'<button class="btn" style="flex:none" onclick="editInstrument(\''+i.key+'\')">Edit</button>':'')
       +'<button class="btn primary" style="flex:none" onclick="insertInstrument(\''+i.key+'\')">Insert</button>'
+      +((typeof isAdmin==='function' && isAdmin() && i._formId)?'<button class="btn" style="flex:none;color:var(--problem,#c92a2a);border-color:var(--problem,#c92a2a)" title="Delete this system form (admin only)" onclick="deleteSystemForm(\''+i._formId+'\')">Delete</button>':'')
       +'</div>';
   }
   function header(t,sub){
@@ -20423,6 +20424,34 @@ function deleteForm(id){
   }
   renderFormsList();
   toast('Form deleted');
+}
+
+/* Delete a System Form (admin only). System forms are backed by a normal form
+   record (the edited/custom copy), so this removes that form from the collection
+   and the backend, then refreshes the System Forms library. Pristine built-in
+   instruments have no backing record and aren't deletable (nothing to remove). */
+function deleteSystemForm(formId){
+  if(typeof isAdmin!=='function' || !isAdmin()){ if(typeof toast==='function') toast('Only an admin can delete a system form'); return; }
+  const f=(typeof FORMS!=='undefined'?FORMS:[]).find(function(x){return x && x.id===formId;});
+  if(!f){ if(typeof toast==='function') toast('System form not found'); return; }
+  if(!confirm('Delete system form "'+(f.title&&f.title.trim()?f.title:'Untitled')+'"? This removes it from the System Forms library and cannot be undone.')) return;
+  // Propagate to the backend when signed in (server ids are cuids — no underscore).
+  if(typeof API_MODE!=='undefined' && API_MODE){
+    var apiId=f._apiId||(f.id && !/_/.test(f.id) ? f.id : null);
+    if(apiId && window.CredifyAPI) CredifyAPI.deleteForm(apiId).catch(function(e){ console.error('Failed to delete system form on server:',e); });
+  }
+  FORMS=FORMS.filter(function(x){return x.id!==formId;});
+  persistForms();
+  // If the deleted form was open in the editor, move to another visible form.
+  if(typeof FORM!=='undefined' && FORM && FORM.id===formId){
+    var visible=FORMS.filter(canViewForm).sort(function(a,b){return (b.updatedAt||0)-(a.updatedAt||0);});
+    if(visible.length){ loadFormIntoEditor(visible[0].id, true); }
+    else if(canCreateForms()){ scaffoldEmptyForm(); }
+    else { showNoAccessState(); }
+  }
+  if(typeof renderInstruments==='function') renderInstruments();
+  if(typeof renderFormsList==='function') renderFormsList();
+  if(typeof toast==='function') toast('System form deleted');
 }
 
 function timeAgo(ts){
