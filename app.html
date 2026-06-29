@@ -7917,18 +7917,29 @@ function dispValueUI(i, f, c){
     return dispOpSelect(i,c,opsList) + (answerOnly?'':`
       <div class="disp-opts">${chips||'<span class="disp-noopt">Add options to this field first</span>'}</div>`);
   }
-  if(f.type==='radio'||f.type==='select'){
+  if(f.type==='radio'||f.type==='select'||f.type==='state'){
     // Membership ops (pick option chips) PLUS label-text ops (match the chosen
     // option's text): is / is not / contains / does not contain.
     const opsList=[{v:'eq',l:'is any of'},{v:'neq',l:'is none of'},{v:'seq',l:'is'},{v:'sneq',l:'is not'},{v:'contains',l:'contains'},{v:'ncontains',l:'does not contain'}];
     if(answerOnly) return dispOpSelect(i,c,opsList);
+    // A literal "state" field (or a choice field missing its baked options)
+    // falls back to the US states list so the value picker is never empty.
+    const opts = (f.options&&f.options.length) ? f.options : (f.type==='state' ? US_STATES : []);
     const isTextOp=(c.op==='seq'||c.op==='sneq'||c.op==='contains'||c.op==='ncontains');
     if(isTextOp){
       return dispOpSelect(i,c,opsList) + `
         <input type="text" class="disp-val" value="${esc(c.value!=null&&!Array.isArray(c.value)?c.value:'')}" oninput="dispSetVal(${i},this.value)" placeholder="option text">`;
     }
-    const sel = Array.isArray(c.value)?c.value.map(Number):(c.value!=null?[Number(c.value)]:[]);
-    const chips=(f.options||[]).map((o,oi)=>`<button type="button" class="disp-opt${sel.indexOf(oi)>=0?' on':''}" onclick="dispToggleOpt(${i},${oi})">${esc(o)}</button>`).join('');
+    const sel = Array.isArray(c.value)?c.value.map(Number):(c.value!=null&&c.value!==''?[Number(c.value)]:[]);
+    // Long option lists (e.g. State's 50+) read far better as a searchable
+    // dropdown than a wall of chips — single-select for these.
+    if(opts.length>12){
+      const cur = sel.length?sel[0]:'';
+      const optionsHTML=opts.map((o,oi)=>`<option value="${oi}"${String(cur)===String(oi)?' selected':''}>${esc(o)}</option>`).join('');
+      return dispOpSelect(i,c,opsList) + `
+        <select class="disp-val enhance-dd dd-search" onchange="dispSetOptOne(${i},this.value)"><option value="">— choose —</option>${optionsHTML}</select>`;
+    }
+    const chips=opts.map((o,oi)=>`<button type="button" class="disp-opt${sel.indexOf(oi)>=0?' on':''}" onclick="dispToggleOpt(${i},${oi})">${esc(o)}</button>`).join('');
     return dispOpSelect(i,c,opsList) + `
       <div class="disp-opts">${chips||'<span class="disp-noopt">Add options to this field first</span>'}</div>`;
   }
@@ -8356,6 +8367,10 @@ function dispSetOp(i,op){
   renderDisplayFields();
 }
 function dispSetVal(i,v){ const c=DISP_BLOCK.conditions[i]; if(c) c.value=v; }
+/* Single-select dropdown value (used for long choice lists like State). Stores
+   the chosen option index as a one-element array so it reads the same as the
+   chip "is any of" membership selection. */
+function dispSetOptOne(i,v){ const c=DISP_BLOCK.conditions[i]; if(!c) return; c.value=(v===''||v==null)?[]:[Number(v)]; if(typeof renderDisplayFields==='function') renderDisplayFields(); }
 function dispSetPhoneVal(i,el){ try{ el.value=formatUSPhone(el.value); }catch(e){} const c=DISP_BLOCK.conditions[i]; if(c) c.value=el.value; }
 function dispSetVal2(i,v){ const c=DISP_BLOCK.conditions[i]; if(c) c.value2=v; }
 function dispToggleOpt(i,oi){
