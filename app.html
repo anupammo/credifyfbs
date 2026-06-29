@@ -7301,6 +7301,10 @@ const DISPLAY_ONLY_TYPES = new Set(['heading','paragraph','divider','statusbar']
 // Sub-families that determine which operators + value box(es) a controller gets.
 const NUMERIC_CTRL_TYPES = new Set(['number','range','rating']);
 const STRING_CTRL_TYPES  = new Set(['text','textarea','email','phone','url','password','date','time','datetime']);
+// Date-based controllers get real date comparison (on/before/after) in show/hide
+// rules, not string matching. Intercepted BEFORE the string branch in both the
+// rule editor and the evaluator.
+const DATE_CTRL_TYPES    = new Set(['date','datetime']);
 // URL fields accept a bare domain (e.g. "CredifyFast.com") — the scheme is
 // optional. Pattern: optional http(s)://, a dotted hostname, optional path.
 const URL_INPUT_PATTERN = '(https?://)?[\\w-]+(\\.[\\w-]+)+([/?#].*)?';
@@ -7308,6 +7312,13 @@ const BOOL_CTRL_TYPES    = new Set(['checkbox','toggle']);
 const STR_OPS = [
   {v:'seq',l:'is'}, {v:'sneq',l:'is not'},
   {v:'contains',l:'contains'}, {v:'ncontains',l:'does not contain'},
+  {v:'filled',l:'is filled in'}, {v:'empty',l:'is empty'}
+];
+// Date / Date&Time operators — compared as real dates (see cmpDate + evalShowIf).
+const DATE_OPS = [
+  {v:'eq',l:'on'},   {v:'neq',l:'not on'},
+  {v:'lt',l:'before'}, {v:'gt',l:'after'},
+  {v:'lte',l:'on or before'}, {v:'gte',l:'on or after'},
   {v:'filled',l:'is filled in'}, {v:'empty',l:'is empty'}
 ];
 const STR_NOVALUE_OPS = new Set(['filled','empty']); // need no value box
@@ -7334,6 +7345,18 @@ function cmpNum(a, op, b, b2){
     case 'eq': return a===b; case 'neq':return a!==b;
   }
   return true;
+}
+/* Compare two date / date-time strings (ISO 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM').
+   Returns false when either side can't be parsed, so a half-set rule never fires. */
+function cmpDate(a, op, b){
+  var da=Date.parse(a), db=Date.parse(b);
+  if(isNaN(da)||isNaN(db)) return false;
+  switch(op){
+    case 'eq':  return da===db;  case 'neq': return da!==db;
+    case 'lt':  return da<db;    case 'gt':  return da>db;
+    case 'lte': return da<=db;   case 'gte': return da>=db;
+  }
+  return false;
 }
 function findRowById(id){ return FORM.rows.find(r=>r.id===id)||null; }
 
@@ -7462,6 +7485,19 @@ function evalShowIf(cond){
   if(NUMERIC_CTRL_TYPES.has(f.type)){ // number / range / rating
     if(ans==null || ans==='') return false; // unanswered numeric → rule false
     return cmpNum(Number(ans), cond.op, Number(cond.value)||0, Number(cond.value2)||0);
+  }
+  if(DATE_CTRL_TYPES.has(f.type)){
+    // We're past the unanswered guard above, so the field IS filled here.
+    if(cond.op==='empty')  return false;
+    if(cond.op==='filled') return true;
+    // Back-compat: older rules may carry string ops on a date field.
+    if(cond.op==='seq')      return cmpDate(ans,'eq',cond.value);
+    if(cond.op==='sneq')     return cmpDate(ans,'neq',cond.value);
+    if(cond.op==='contains' || cond.op==='ncontains'){
+      const s=String(ans==null?'':ans).toLowerCase(), v=String(cond.value==null?'':cond.value).toLowerCase();
+      return cond.op==='contains' ? s.indexOf(v)>=0 : s.indexOf(v)<0;
+    }
+    return cmpDate(ans, cond.op, cond.value);
   }
   if(STRING_CTRL_TYPES.has(f.type)){
     const s=String(ans==null?'':ans).replace(/\s+/g,' ').trim();
@@ -7948,6 +7984,15 @@ function dispValueUI(i, f, c){
     return dispOpSelect(i,c,NUM_OPS) + (answerOnly?'':`
       <input type="number" class="disp-val" value="${esc(c.value!=null?c.value:'')}" oninput="dispSetVal(${i},this.value)" placeholder="value">
       ${two?`<span class="disp-and">and</span><input type="number" class="disp-val" value="${esc(c.value2!=null?c.value2:'')}" oninput="dispSetVal2(${i},this.value)" placeholder="value">`:''}`);
+  }
+  if(DATE_CTRL_TYPES.has(f.type)){
+    // Real date operators (on / before / after / on-or-before / on-or-after) with
+    // a native date (or datetime-local) value box — not free text.
+    const noVal=answerOnly||STR_NOVALUE_OPS.has(c.op);
+    if(noVal) return dispOpSelect(i,c,DATE_OPS);
+    const inputType = f.type==='datetime' ? 'datetime-local' : 'date';
+    return dispOpSelect(i,c,DATE_OPS) + `
+      <input type="${inputType}" class="disp-val" value="${esc(c.value!=null?c.value:'')}" oninput="dispSetVal(${i},this.value)">`;
   }
   if(STRING_CTRL_TYPES.has(f.type)){
     const noVal=answerOnly||STR_NOVALUE_OPS.has(c.op);
