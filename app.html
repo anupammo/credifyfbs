@@ -8469,15 +8469,14 @@ function dispClearRule(){
 function inspectorNewRule(fieldId){
   if(typeof currentFormReadOnly==='function' && currentFormReadOnly()){ try{toast('Read-only — can\'t modify this form');}catch(e){} return; }
   ensureVisGroupsInit();
-  const f=findFieldById(fieldId);
-  // Seed the new rule's controller so the condition builder renders immediately:
-  // this field if it can be a controller (the dropdown case), else the controller
-  // its existing rule already uses. The user sets a fresh condition + picks fields.
-  let ctrl='';
-  if(f && CONTROLLER_TYPES.has(f.type)) ctrl=fieldId;
-  else if(f && f.showIf && f.showIf.conditions && f.showIf.conditions[0] && f.showIf.conditions[0].fieldId) ctrl=f.showIf.conditions[0].fieldId;
-  const showIf = ctrl ? {block:true, name:'', match:'all', conditions:[{type:'field', fieldId:ctrl, op:'any'}]} : null;
-  const vg={id:uid('vg'), fieldIds:[], showIf};
+  // A new, SEPARATE display rule GATES this field: seed the visibility group with
+  // the field as the shown member, then let the user pick the controlling field +
+  // condition. This works even when the field already participates in a rule — its
+  // own showIf, or as the controller of other fields — because the new group rule
+  // is independent and ANDs with any existing rule.
+  // (Previously this seeded the field as the CONTROLLER with an EMPTY cluster, so
+  // there was no way to add a show/hide rule TO a field that already had one.)
+  const vg={id:uid('vg'), fieldIds:[fieldId], showIf:null};
   FORM.visibilityGroups.push(vg);
   openDisplayFields('vgroup:'+vg.id);
 }
