@@ -11196,20 +11196,62 @@ function effectiveInstruments(){
   return out;
 }
 
-/* Insert a system form (edited/custom) by cloning its content with fresh ids. */
+/* Recursively rewrite field/section id references inside a showIf rule (a single
+   condition, a block, or nested blocks) using old->new id maps. A reference whose
+   id isn't in the maps (e.g. a genuine cross-form condition pointing at another
+   form) is left untouched; a self-reference that DID map is made local (its
+   formId is dropped) so it resolves against the freshly-inserted copy. */
+function _remapRuleRefs(rule, fieldMap, secMap){
+  if(!rule || typeof rule!=='object') return rule;
+  if(rule.fieldId && fieldMap[rule.fieldId]){ rule.fieldId=fieldMap[rule.fieldId]; if(rule.formId) delete rule.formId; }
+  if(rule.sectionId && secMap[rule.sectionId]) rule.sectionId=secMap[rule.sectionId];
+  if(Array.isArray(rule.conditions)) rule.conditions.forEach(function(c){ _remapRuleRefs(c, fieldMap, secMap); });
+  return rule;
+}
+
+/* Insert a system form (edited/custom) by cloning its content with fresh ids.
+   Every id reference inside the cloned content — field showIf rules, row showIf,
+   section score gates, critical-item alerts, and visibility groups — is rewritten
+   to the NEW ids, so the system form's display/scoring rules keep working after
+   it's dropped into another form. */
 function insertSystemForm(src){
   ensureScoringInit();
   const page=(typeof BUILDER_PAGE!=='undefined')?BUILDER_PAGE:1;
-  const idMap={};
+  const idMap={};      // old field id -> new
+  const secMap={};     // old section id -> new
+  const newFields=[];
+  const newRows=[];
   (src.rows||[]).forEach(function(r){
-    const fields=(r.fields||[]).map(function(of){ var nf=JSON.parse(JSON.stringify(of)); var old=nf.id; nf.id=uid('f'); if(old) idMap[old]=nf.id; return nf; });
-    FORM.rows.push({id:uid('r'),page:page,fields:fields});
+    const fields=(r.fields||[]).map(function(of){ var nf=JSON.parse(JSON.stringify(of)); var old=nf.id; nf.id=uid('f'); if(old) idMap[old]=nf.id; newFields.push(nf); return nf; });
+    const nr={id:uid('r'),page:page,fields:fields};
+    if(r.showIf) nr.showIf=JSON.parse(JSON.stringify(r.showIf));   // preserve row-level rules
+    newRows.push(nr);
+    FORM.rows.push(nr);
   });
   (src.scoringSections||[]).forEach(function(s){
-    var ns=JSON.parse(JSON.stringify(s)); ns.id=uid('sect');
+    var ns=JSON.parse(JSON.stringify(s)); var oldSec=ns.id; ns.id=uid('sect'); if(oldSec) secMap[oldSec]=ns.id;
     ns.fieldIds=(ns.fieldIds||[]).map(function(id){return idMap[id];}).filter(Boolean);
     if(ns.alert&&ns.alert.critical){ ns.alert.critical=ns.alert.critical.map(function(c){c.fieldId=idMap[c.fieldId];return c;}).filter(function(c){return c.fieldId;}); }
+    // Per-field scoring gates live at section.scoreConds[fieldId] — re-key by the
+    // new field id and remap any field/section refs inside each gate.
+    if(ns.scoreConds && typeof ns.scoreConds==='object'){
+      var nc={};
+      Object.keys(ns.scoreConds).forEach(function(fid){ var nf=idMap[fid]; if(nf) nc[nf]=_remapRuleRefs(ns.scoreConds[fid], idMap, secMap); });
+      if(Object.keys(nc).length) ns.scoreConds=nc; else delete ns.scoreConds;
+    }
     FORM.scoringSections.push(ns);
+  });
+  // Both maps now exist — rewrite every cloned rule so its refs point at the new ids.
+  newFields.forEach(function(nf){ if(nf.showIf) _remapRuleRefs(nf.showIf, idMap, secMap); });
+  newRows.forEach(function(nr){ if(nr.showIf) _remapRuleRefs(nr.showIf, idMap, secMap); });
+  // Carry over any visibility group that gates the inserted fields.
+  ensureVisGroupsInit();
+  (src.visibilityGroups||[]).forEach(function(g){
+    var fids=(g.fieldIds||[]).map(function(id){return idMap[id];}).filter(Boolean);
+    if(!fids.length) return;
+    var ng={id:uid('vg'), fieldIds:fids};
+    if(g.showIf) ng.showIf=_remapRuleRefs(JSON.parse(JSON.stringify(g.showIf)), idMap, secMap);
+    FORM.visibilityGroups.push(ng);
   });
   if(typeof render==='function') render();
   if(typeof renderScoringModal==='function') renderScoringModal();
