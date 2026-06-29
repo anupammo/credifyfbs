@@ -13818,9 +13818,37 @@ function cssEscape(s){
 }
 
 /* Navigate the preview between pages (clamped). */
+/* Validate every visible field on the CURRENT preview page (required, email/phone
+   format, signature, total-time…) using the same per-field checker as submit.
+   Flags the offenders red, focuses + scrolls to the first one, and returns
+   {ok}. Conditionally-hidden / off-page fields are skipped. */
+function validateCurrentPreviewPage(){
+  const m=document.getElementById('preview-mount'); if(!m) return {ok:true};
+  const fields=m.querySelectorAll('.pf-field');
+  let first=null;
+  for(let i=0;i<fields.length;i++){
+    const pf=fields[i];
+    if(pf.offsetParent===null) continue;            // hidden (conditional or off-page)
+    const r=previewFieldValidity(pf);
+    if(r.ok){ clearPreviewFieldInvalid(pf); }
+    else { setPreviewFieldInvalid(pf, r.msg); if(!first) first=r.focusEl||pf; }
+  }
+  if(first){
+    try{ first.focus({preventScroll:true}); }catch(e){ try{ first.focus(); }catch(_){} }
+    if(first.scrollIntoView) try{ first.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+  }
+  return {ok:!first};
+}
 function gotoPreviewPage(p){
   const max=pageCount();
   p=Math.max(1, Math.min(p, max));
+  // Block FORWARD navigation while the current page has invalid or incomplete
+  // required fields — mirrors the exported/fill form's wizard (Next only advances
+  // when the page validates). Going BACK is always allowed.
+  if(p>PREVIEW_PAGE && !validateCurrentPreviewPage().ok){
+    if(typeof toast==='function') toast('Please complete the highlighted fields before continuing.');
+    return;
+  }
   // Snap onto a visible page (page rules may have skipped the target).
   const vis=visiblePreviewPages();
   if(vis.indexOf(p)<0) p = vis.find(x=>x>=p) || vis[vis.length-1];
