@@ -4353,6 +4353,16 @@ body.block-selecting .field.block-sel{border-color:var(--green-primary);box-shad
   </div>
 </div>
 
+<div class="modal-overlay" id="branch-modal">
+  <div class="modal" style="max-width:760px;width:94vw">
+    <div class="modal-head"><h3 id="branch-title">Branch fields by answer</h3>
+      <button class="x-btn" title="Cancel" onclick="closeBranchEditor()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body"><div id="branch-body"></div></div>
+    <div class="modal-foot"><button class="btn" onclick="closeBranchEditor()">Cancel</button><button class="btn primary" onclick="saveBranchEditor()">Save rules</button></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="dispfields-modal">
   <div class="modal dispfields-modal" id="dispfields-modal-box" style="max-width:860px">
     <div class="modal-head"><h3>Show Fields</h3>
@@ -6732,6 +6742,14 @@ function renderInspector(){
       <label class="inspector-check show-field-check"><input type="checkbox" ${field.showIf?'checked':''} onchange="dispToggleFieldRule('${field.id}',this.checked,this)"> Show Field <span style="font-weight:400;color:var(--text-muted-2)">— only on a condition (flagged orange)</span></label>
     </div>`;
     html+=inspectorAppliedConditionHTML(field);
+    // Branch-by-answer: a single-choice field can route a DIFFERENT set of fields
+    // to show for each of its options, all from one screen.
+    if(field.type==='select'||field.type==='radio'||field.type==='state'){
+      html+=`<div class="inspector-field">
+        <button class="btn" style="width:100%" onclick="openBranchEditor('${field.id}')">⎇ Branch fields by answer…</button>
+        <div class="acc-hint" style="margin-top:6px">Show a different set of fields for each answer of this field.</div>
+      </div>`;
+    }
   }
   // (Cross-form sharing is now configured via the Autopopulation picker at the
   // bottom of the inspector — see the "⇄ Autopopulation" group below.)
@@ -8394,6 +8412,82 @@ function dispAddElseField(fieldId){
 function dispRemoveElseField(fieldId){
   DISP_SHOW_ELSE=DISP_SHOW_ELSE.filter(x=>x!==fieldId);
   renderDisplayFields();
+}
+
+/* ===== Branch-by-answer editor ===============================================
+   For a single-choice controller (select / radio / state), map EACH option to the
+   set of fields to show when that option is the answer. Each mapped field gets a
+   plain showIf "controller is [that option]", so the normal evaluator handles it —
+   this screen is just a one-place way to set up many per-value rules at once. */
+let BRANCH_FIELD_ID='', BRANCH_MAP={}, BRANCH_MAP_ORIG=[];
+function branchOptions(f){ return (f && f.options && f.options.length) ? f.options : (f && f.type==='state' ? US_STATES : []); }
+function _isBranchRuleFor(showIf, ctrlId){
+  return !!(showIf && !showIf.invert && showIf.conditions && showIf.conditions.length===1
+    && showIf.conditions[0].type==='field' && showIf.conditions[0].fieldId===ctrlId
+    && showIf.conditions[0].op==='eq');
+}
+function openBranchEditor(fieldId){
+  if(typeof currentFormReadOnly==='function' && currentFormReadOnly()){ toast('Read-only — can’t modify this form'); return; }
+  const f=findFieldById(fieldId);
+  if(!f || !(f.type==='select'||f.type==='radio'||f.type==='state')){ toast('Branching works on a dropdown, radio, or state field'); return; }
+  BRANCH_FIELD_ID=fieldId; BRANCH_MAP={};
+  const allF=FORM.rows.flatMap(r=>r.fields);
+  // Seed from any existing single-value rules that already point at this controller.
+  allF.forEach(x=>{
+    if(x.id===fieldId) return;
+    if(_isBranchRuleFor(x.showIf, fieldId)){
+      const v=x.showIf.conditions[0].value;
+      if(Array.isArray(v) && v.length===1){ const k=Number(v[0]); if(!BRANCH_MAP[k]) BRANCH_MAP[k]=[]; BRANCH_MAP[k].push(x.id); }
+    }
+  });
+  BRANCH_MAP_ORIG=allF.filter(x=>x.id!==fieldId && _isBranchRuleFor(x.showIf, fieldId)).map(x=>x.id);
+  const t=document.getElementById('branch-title'); if(t) t.textContent='Show fields based on “'+(f.label||'this field')+'” answer';
+  renderBranchEditor();
+  openModal('branch-modal');
+}
+function renderBranchEditor(){
+  const body=document.getElementById('branch-body'); if(!body) return;
+  const f=findFieldById(BRANCH_FIELD_ID); if(!f){ body.innerHTML='<div class="disp-empty">Field not found.</div>'; return; }
+  const opts=branchOptions(f);
+  // Every field already mapped to ANY option (so it can't be double-assigned).
+  const used=new Set(); Object.keys(BRANCH_MAP).forEach(k=>{ (BRANCH_MAP[k]||[]).forEach(id=>used.add(id)); });
+  let h='<p class="disp-cond-help">For each answer of <b>'+esc(f.label||'this field')+'</b>, pick the fields to show. A field belongs to one answer; the other answers hide it automatically.</p>';
+  if(!opts.length){ h+='<div class="disp-empty">Add options to this field first.</div>'; body.innerHTML=h; return; }
+  opts.forEach((opt,k)=>{
+    const sel=BRANCH_MAP[k]||[];
+    h+='<div class="disp-section"><div class="disp-section-head"><span class="disp-section-title">When answer is “'+esc(String(opt))+'”</span>'+(sel.length?'<span class="disp-show-count">'+sel.length+' selected</span>':'')+'</div>';
+    if(sel.length){
+      h+='<div class="disp-show-chips">';
+      sel.forEach(id=>{ const ff=findFieldById(id); if(!ff) return; h+='<span class="disp-show-chip"><span class="disp-show-chip-name">'+esc(ff.label||'Untitled')+'</span><span class="disp-pill">'+esc(fieldTypeName(ff))+'</span><button onclick="branchRemove('+k+',\''+id+'\')" title="Remove">✕</button></span>'; });
+      h+='</div>';
+    }
+    const cands=FORM.rows.flatMap(r=>r.fields).filter(x=>!DISPLAY_ONLY_TYPES.has(x.type) && x.id!==BRANCH_FIELD_ID && !used.has(x.id)).slice(0,40);
+    h+='<div class="disp-results">';
+    if(!cands.length){ h+='<div class="disp-empty">No more fields to add.</div>'; }
+    else cands.forEach(x=>{ h+='<button type="button" class="disp-result" onclick="branchAdd('+k+',\''+x.id+'\')"><span class="disp-result-name">'+esc(x.label||'Untitled')+'</span><span class="disp-pill">'+esc(fieldTypeName(x))+'</span><span class="disp-plus">+ add</span></button>'; });
+    h+='</div></div>';
+  });
+  body.innerHTML=h;
+}
+function branchAdd(k,id){ if(!BRANCH_MAP[k]) BRANCH_MAP[k]=[]; if(BRANCH_MAP[k].indexOf(id)<0) BRANCH_MAP[k].push(id); renderBranchEditor(); }
+function branchRemove(k,id){ if(BRANCH_MAP[k]) BRANCH_MAP[k]=BRANCH_MAP[k].filter(x=>x!==id); renderBranchEditor(); }
+function closeBranchEditor(){ closeModal('branch-modal'); }
+function saveBranchEditor(){
+  const fieldId=BRANCH_FIELD_ID; if(!fieldId) return;
+  const mapped=new Set();
+  Object.keys(BRANCH_MAP).forEach(k=>{
+    (BRANCH_MAP[k]||[]).forEach(id=>{
+      const f=findFieldById(id); if(!f) return;
+      f.showIf={block:true, name:'', match:'all', conditions:[{type:'field', fieldId:fieldId, op:'eq', value:[Number(k)]}]};
+      mapped.add(id);
+    });
+  });
+  // Fields dropped from the switch get cleared — but only if they still carry a
+  // single-value rule on THIS controller (never touch an unrelated rule).
+  (BRANCH_MAP_ORIG||[]).forEach(id=>{ if(mapped.has(id)) return; const f=findFieldById(id); if(f && _isBranchRuleFor(f.showIf, fieldId)) f.showIf=null; });
+  saveForm(); render();
+  closeBranchEditor();
+  try{ toast('Branching rules saved'); }catch(e){}
 }
 /* Add a cross-form (or local) SCORE section as a visibility condition.
    Merged from JAY build. Reachable once the search surfaces score sections;
