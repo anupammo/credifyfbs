@@ -3049,6 +3049,10 @@ select.addr-part{appearance:auto;-webkit-appearance:auto;height:auto;min-height:
 .dispmgr-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--white)}
 .dispmgr-row.plain.has-rule{border-left:5px solid var(--stripe,var(--green-primary))}
 .dispmgr-row.rule{align-items:stretch;border-left:5px solid var(--stripe,var(--green-primary))}
+/* Brief highlight when the manager is opened focused on one field (from the
+   field's "Show Fields" handle button) so the row you came from is obvious. */
+.dispmgr-row-flash{animation:dispmgrRowFlash 1.6s ease-out}
+@keyframes dispmgrRowFlash{0%,30%{background:var(--mint-pale);box-shadow:0 0 0 2px var(--green-primary)}100%{background:var(--white);box-shadow:none}}
 .dispmgr-num{flex:none;width:24px;height:24px;border-radius:7px;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;align-self:center;background:var(--stripe,var(--green-primary))}
 .dispmgr-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .dispmgr-when{font-size:12.5px;font-weight:600;color:var(--text-main);background:var(--mint-pale);border-radius:7px;padding:5px 9px;overflow-wrap:anywhere}
@@ -8878,6 +8882,25 @@ function openDisplayManager(){
   }
   openModal('dispmgr-modal'); DISP_MGR_VIEW='fields'; DISP_MGR_SEARCH=''; DISP_MGR_SCOPE='this'; renderDisplayManager();
 }
+/* Unified entry from a field's "Show Fields" handle button: open the SAME
+   Show Fields manager the toolbar opens, but pre-focused on this one field —
+   filtered to it and its row scrolled into view + briefly highlighted. Keeps a
+   single visibility surface instead of a separate per-field modal. */
+function openFieldShowFields(fieldId){
+  if(currentFormReadOnly()){ toast('Read-only — can\'t modify this form'); return; }
+  const f=findFieldById(fieldId);
+  openDisplayManager();
+  DISP_MGR_VIEW='fields'; DISP_MGR_SCOPE='this';
+  DISP_MGR_SEARCH=f?(f.label||''):'';
+  renderDisplayManager();
+  // The field may be governed by its visibility group — target that row instead.
+  const g=f?visGroupForField(fieldId):null;
+  const scope=g?('vgroup:'+g.id):('field:'+fieldId);
+  const body=document.getElementById('dispmgr-body');
+  const row=body&&body.querySelector('.dispmgr-row[data-scope="'+scope+'"]');
+  if(row){ try{ row.scrollIntoView({block:'center'}); }catch(e){}
+    row.classList.add('dispmgr-row-flash'); setTimeout(()=>{ try{ row.classList.remove('dispmgr-row-flash'); }catch(e){} },1600); }
+}
 let DISP_MGR_VIEW='fields'; // 'fields' (default) | 'show'
 let DISP_MGR_SCOPE='this'; // 'this' (default) | 'all'
 let DISP_MGR_SEARCH='';
@@ -8955,7 +8978,7 @@ function renderDisplayManager(){
       }
       shownCount++;
       const cond=rule?rule.cond:null;
-      rowsHTML+=`<div class="dispmgr-row plain${rule?' has-rule':''}"${rule?` style="--stripe:${rule.color}"`:''}>
+      rowsHTML+=`<div class="dispmgr-row plain${rule?' has-rule':''}" data-scope="${scope}"${rule?` style="--stripe:${rule.color}"`:''}>
         <div class="dispmgr-info">
           ${rule?`<span class="dispmgr-chip" style="--stripe:${rule.color}">#${rule.num}</span>`:''}
           <span class="dispmgr-name">${esc(f.label||'Untitled')}</span>
@@ -12905,7 +12928,7 @@ function fieldRailHTML(field){
   const md='onmousedown="event.stopPropagation()"';
   return `<div class="field-rail" data-field-rail>`
     +`<button type="button" class="fr-btn" draggable="false" title="Field settings" ${md} onclick="event.stopPropagation();selectField(event,'${id}')">${svg(gear)}</button>`
-    +`<button type="button" class="fr-btn" draggable="false" title="Visibility rules" ${md} onclick="event.stopPropagation();openDisplayFields('field:${id}')">${svg(eye)}</button>`
+    +`<button type="button" class="fr-btn" draggable="false" title="Show Fields — manage this field's visibility" ${md} onclick="event.stopPropagation();openFieldShowFields('${id}')">${svg(eye)}</button>`
     +`<button type="button" class="fr-btn" draggable="false" title="Duplicate field" ${md} onclick="event.stopPropagation();duplicateFieldById('${id}')">${svg(copy)}</button>`
     +`<button type="button" class="fr-btn del" draggable="false" title="Delete field" ${md} onclick="event.stopPropagation();deleteFieldById('${id}')">${svg(trash)}</button>`
     +`</div>`;
