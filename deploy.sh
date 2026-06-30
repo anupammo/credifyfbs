@@ -35,7 +35,7 @@
 # └────────────────────────────────────────────────────────────────────────────┘
 #
 # USAGE
-#   ./deploy.sh                  Deploy the current branch (fallback: v4.2)
+#   ./deploy.sh                  Deploy the current branch (fallback: v4.4)
 #   ./deploy.sh v4.3             Deploy a specific branch
 #   FORCE_BACKEND=1 ./deploy.sh  Deploy + force an API container rebuild
 #   ./deploy.sh status           Show git HEAD + container status
@@ -55,7 +55,7 @@ COMPOSE_FILE="docker-compose.prod.yml"
 NGINX_VHOST="/etc/nginx/sites-available/forms.credifyfast.com"
 LOGIN_DIR="/home/support/credify-login"
 LOGIN_PM2="credify"
-DEFAULT_BRANCH="v4.2"
+DEFAULT_BRANCH="v4.4"
 DOMAIN="forms.credifyfast.com"
 API_DOMAIN="chrome.credifyfast.com"
 API_CONTAINER="docker-backend-1"
@@ -95,9 +95,13 @@ do_deploy() {
   if [ "$before" = "$after" ]; then echo "    code unchanged ($after) — re-publishing anyway"; else echo "    $before -> $after"; fi
 
   # 2) publish the static frontend
+  #    app.html is the single source of truth; nginx serves '/' from index.html,
+  #    so index.html is a symlink to app.html (ln is idempotent + self-heals a
+  #    fresh box). Don't cp to index.html separately — that would just write
+  #    through the symlink back into app.html.
   echo "==> Publishing frontend -> $WEB_ROOT"
-  sudo cp app.html "$WEB_ROOT/index.html"
   sudo cp app.html "$WEB_ROOT/app.html"
+  sudo ln -sfn app.html "$WEB_ROOT/index.html"
   [ -f fill.html ] && sudo cp fill.html "$WEB_ROOT/fill.html"
   [ -d errors ]    && sudo cp errors/404.html errors/403.html errors/50x.html "$WEB_ROOT/"
   for f in favicon.ico icon.png apple-icon.png; do
