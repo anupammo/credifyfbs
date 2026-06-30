@@ -95,10 +95,11 @@ do_deploy() {
   if [ "$before" = "$after" ]; then echo "    code unchanged ($after) — re-publishing anyway"; else echo "    $before -> $after"; fi
 
   # 2) publish the static frontend
-  #    app.html is the single source of truth; nginx serves '/' from index.html,
-  #    so index.html is a symlink to app.html (ln is idempotent + self-heals a
-  #    fresh box). Don't cp to index.html separately — that would just write
-  #    through the symlink back into app.html.
+  #    app.html is the single source of truth. The live nginx vhost serves '/'
+  #    via `index app.html index.html index.htm;`, so copying app.html is enough.
+  #    We ALSO (re)assert index.html -> app.html as a belt-and-suspenders fallback
+  #    (ln is idempotent + self-heals a fresh box). Don't cp to index.html
+  #    separately — that would just write through the symlink back into app.html.
   echo "==> Publishing frontend -> $WEB_ROOT"
   sudo cp app.html "$WEB_ROOT/app.html"
   sudo ln -sfn app.html "$WEB_ROOT/index.html"
