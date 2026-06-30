@@ -36,10 +36,10 @@ CredifyFBS is **not** a typical bundled SPA. It has two independently deployed h
 
 | Half | What it is | Lives in | Served at |
 |------|-----------|----------|-----------|
-| **Frontend** | A single-file builder (`app.html`, ~22k lines, vanilla JS — **no build step**), the public patient form (`fill.html`), branded error pages, and a Chrome MV3 extension (`manifest.json`, `background.js`, `newtab.*`) | repo root | `forms.credifyfast.com` (static, nginx) |
+| **Frontend** | A single-file **webapp** builder (`app.html`, ~22k lines, vanilla JS — **no build step**), the public patient form (`fill.html`), and branded error pages. _(The original Chrome MV3 extension is retired and archived under `legacy/chrome-extension/`.)_ | repo root | `forms.credifyfast.com` (static, nginx) |
 | **Backend** | A Next.js 16 REST API with Prisma + PostgreSQL, in Docker | `backend/` | `chrome.credifyfast.com/api` (Docker, host nginx proxy) |
 
-Auth is **SSO** via `credify-login` (a shared `credify_token` cookie scoped to `.credifyfast.com`), with JWT bearer tokens as a fallback for the extension. See `backend/lib/auth/`.
+Auth is **SSO** via `credify-login` (a shared `credify_token` cookie scoped to `.credifyfast.com`), with JWT bearer tokens as a fallback (used by the dormant offline path). See `backend/lib/auth/`.
 
 ---
 

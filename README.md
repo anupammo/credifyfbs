@@ -2,7 +2,7 @@
 
 > **Internal Team Tool** — Behavioral health intake form builder with weights, scoring sections, conditional logic, and multi-user access control.
 
-[![Branch](https://img.shields.io/badge/branch-v4.2-2ea44f)](./manifest.json)
+[![Branch](https://img.shields.io/badge/branch-v4.4-2ea44f)](./app.html)
 [![Frontend](https://img.shields.io/badge/frontend-Single--file_HTML%2FJS-f7df1e)](./app.html)
 [![Next.js](https://img.shields.io/badge/Next.js-16.2-black)](./backend)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178c6)](./backend)
@@ -19,7 +19,7 @@
 ## Table of Contents
 
 1. [Project Overview](#1-project-overview)
-2. [Current State — v1.0 Extension](#2-current-state--v10-extension)
+2. [Current State — Webapp](#2-current-state--webapp)
 3. [Target Architecture — v1.1 Full Stack](#3-target-architecture--v11-full-stack)
 4. [Tech Stack & Rationale](#4-tech-stack--rationale)
 5. [Repository Structure](#5-repository-structure)
@@ -27,7 +27,7 @@
 7. [API Design](#7-api-design)
 8. [Security & Encryption Strategy](#8-security--encryption-strategy)
 9. [Authentication Flow](#9-authentication-flow)
-10. [Extension ↔ Backend Integration](#10-extension--backend-integration)
+10. [Webapp ↔ Backend Integration](#10-webapp--backend-integration)
 11. [Docker & GCP Deployment](#11-docker--gcp-deployment)
 12. [Development Quickstart](#12-development-quickstart)
 13. [Environment Variables](#13-environment-variables)
@@ -37,7 +37,7 @@
 
 ## 1. Project Overview
 
-**Credify Form Builder Studio** is an internal Chrome Extension used by the Credify team to design, version, and distribute behavioral health intake forms (e.g., PHQ-9, GAD-7, custom intake sheets). It supports:
+**Credify Form Builder Studio** is an internal **webapp** used by the Credify team to design, version, and distribute behavioral health intake forms (e.g., PHQ-9, GAD-7, custom intake sheets). It runs standalone at **forms.credifyfast.com** (nginx → `app.html`). It supports:
 
 - **Drag-and-drop form building** with 12-column grid layout
 - **Multi-page forms** with page-level skip logic
@@ -47,7 +47,7 @@
 - **Form sharing** within the team
 - **Export** to JSON, HTML, and PDF
 
-**v1.0** stores all data locally in `chrome.storage.local`. **v1.1** migrates to a centralised PostgreSQL backend with real authentication, end-to-end encryption, and GCP deployment — enabling true team collaboration, audit logging, and data governance compliance.
+The builder ships as a **webapp**: `app.html` is served standalone over HTTPS and runs on `localStorage` + the backend API. The original v1.0 **Chrome-extension packaging** (a popup-window launcher that hosted `app.html`) is **retired and archived under [`legacy/chrome-extension/`](./legacy/chrome-extension/)**; a separate *external* extension may be added later to enhance — not host — the webapp. **v1.1** added a centralised PostgreSQL backend with real authentication, end-to-end encryption, and GCP deployment — enabling true team collaboration, audit logging, and data governance compliance.
 
 > ### 🆕 v4 (current branch) — New Prototype UI + Live Backend Wiring
 > The builder has been rebuilt on the new **merged design prototype** — a superset of the
@@ -56,52 +56,53 @@
 > field numbering, device-adaptive date/time & searchable pickers) — and the production
 > backend is now **wired directly into `app.html`** through `window.CredifyAPI` (JWT auth,
 > offline-first sync). A top-right **account bar** (Alerts · Responses · Admin · Sign out) was
-> added. See [§10 Integration](#10-extension--backend-integration) and the
+> added. See [§10 Integration](#10-webapp--backend-integration) and the
 > **v4** entry in [§14 Roadmap](#14-roadmap) for the full change log.
 
 ---
 
-## 2. Current State — v1.0 Extension
+## 2. Current State — Webapp
 
 ### How it works
 
-The extension is a **Manifest V3** Chrome Extension that opens in a popup window. The form builder (`app.html`) is loaded as a **sandboxed page** to preserve its 157+ inline event handlers — which MV3 blocks on regular extension pages.
+The builder is a **webapp**: nginx serves the single-file `app.html` standalone over
+HTTPS at `forms.credifyfast.com`. It boots offline-first against `localStorage` and
+syncs through the backend API when signed in. There is **no extension host, no
+sandbox, and no storage bridge** — `app.html` detects its environment via
+`isWebApp()` and uses `localStorage` + `fetch` directly.
 
 ```
-Chrome Action click
+Browser → https://forms.credifyfast.com/
       │
       ▼
-background.js (service worker)
-  chrome.windows.create → newtab.html
+nginx (static)  →  app.html
       │
-      ▼
-newtab.html  (non-sandboxed host)
-  newtab.js  ─── chrome.storage.local ──▶ seed data
-      │               ▲
-      │  postMessage  │ persist writes
-      ▼               │
-app.html  (sandboxed) ── localStorage shim
-  full form builder UI
+      ├─ localStorage  (working store, offline cache)
+      └─ fetch → https://chrome.credifyfast.com/api  (sync when signed in)
 ```
 
-**localStorage bridge:** A tiny shim injected into `app.html` provides a synchronous `localStorage` API. On load, the shim is seeded with data passed via the iframe URL hash. Every `setItem` / `removeItem` is forwarded to `newtab.js` via `postMessage`, which debounces and persists to `chrome.storage.local`.
+**Auth:** on the web, an unauthenticated load redirects to `login.credifyfast.com`
+(SSO), which redirects back with a JWT. See [§9](#9-authentication-flow).
 
-### v1.0 File Map
+### File Map
 
 | File | Role |
 |------|------|
-| `manifest.json` | MV3 config — popup, sandbox page, `storage` permission |
-| `background.js` | Service worker — opens app window, sized to 90 % of screen |
-| `newtab.html` | Host page — frames `app.html` in a 90 vw/vh rounded card |
-| `newtab.js` | Host logic — storage bridge, seed/persist cycle |
-| `app.html` | Complete form builder UI — styles + HTML + JavaScript (~7 000 lines) |
-| `icons/` | Extension toolbar icons (16 / 48 / 128 px) |
+| `app.html` | Complete form builder UI — styles + HTML + JavaScript (~22 000 lines); served standalone |
+| `fill.html` | Public patient fill page (`/f/<token>`) |
+| `errors/` | Branded 404 / 403 / 50x pages (nginx `error_page`) |
+| `favicon.ico`, `icon.png`, `apple-icon.png` | Webapp icons |
+| `deploy.sh` | One-command VM deploy (publishes `app.html`, refreshes the `index.html` symlink) |
+
+> **Legacy:** the original v1.0 **Chrome-extension launcher** (`manifest.json`,
+> `background.js`, `newtab.html`, `newtab.js`, `icons/`) is archived under
+> [`legacy/chrome-extension/`](./legacy/chrome-extension/). It is no longer shipped.
 
 ### v1.0 Data model (localStorage keys)
 
 | Key | Value |
 |-----|-------|
-| `credify_ls` | Outer envelope written by `newtab.js` to `chrome.storage.local` |
+| `credify_ls` | _(legacy)_ outer envelope the old extension's `newtab.js` wrote to `chrome.storage.local`; unused by the webapp |
 | `credify_forms_v2` | `Form[]` — full form definitions with JSONB-style schemas |
 | `credify_users_v1` | `User[]` — team roster with roles (seeded; no real auth) |
 | `credify_current_user_v1` | Active user ID string |
@@ -120,15 +121,15 @@ app.html  (sandboxed) ── localStorage shim
 │                       GCP Project                               │
 │                                                                 │
 │   ┌──────────────────────┐     ┌────────────────────────────┐  │
-│   │   Chrome Extension   │     │    Cloud Run Service       │  │
-│   │   (MV3 · v1.2)       │────▶│    Next.js 16 App Router   │  │
+│   │   Webapp (browser)   │     │    Cloud Run Service       │  │
+│   │   forms.credifyfast  │────▶│    Next.js 16 App Router   │  │
 │   │                      │HTTPS│    (API Routes only)       │  │
-│   │  background.js       │     │                            │  │
-│   │  └─ ApiClient        │     │  /api/auth/**              │  │
+│   │  app.html            │     │                            │  │
+│   │  └─ CredifyAPI       │     │  /api/auth/**              │  │
 │   │  └─ TokenStore       │◀────│  /api/forms/**             │  │
 │   │                      │JWT  │  /api/users/**             │  │
-│   │  app.html            │     │  /api/groups/**            │  │
-│   │  └─ StorageBridge    │     │  /api/blocks/**            │  │
+│   │  localStorage        │     │  /api/groups/**            │  │
+│   │  (offline cache)     │     │  /api/blocks/**            │  │
 │   └──────────────────────┘     └────────────┬───────────────┘  │
 │                                             │ Prisma ORM        │
 │                                             ▼                   │
@@ -149,8 +150,8 @@ app.html  (sandboxed) ── localStorage shim
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Layer 1 · Chrome Extension (Presentation)                      │
-│  app.html builder UI — unchanged visual; API-backed persistence  │
+│  Layer 1 · Webapp (Presentation)                                │
+│  app.html builder UI — served standalone; API-backed persistence │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 2 · API Gateway (Next.js App Router)                     │
 │  REST routes, request validation (Zod), rate limiting           │
@@ -185,7 +186,7 @@ app.html  (sandboxed) ── localStorage shim
 | **Instrument Serif + Sora** (Google Fonts) | Brand typography — serif headings / sans body |
 | **html2pdf.bundle** | Filled-PDF export |
 | **qrcodejs** (cdnjs) | QR codes for patient share links |
-| **MV3 Chrome Extension** — `manifest.json`, `background.js`, `newtab.*` | Original v1.0 packaging (sandboxed `app.html`); the web build now serves the same file standalone |
+| **MV3 Chrome Extension** _(legacy)_ — archived in `legacy/chrome-extension/` | Original v1.0 packaging (sandboxed `app.html`); retired — the webapp now serves the same file standalone |
 
 ### Backend API
 
@@ -251,15 +252,20 @@ Git / GitHub (`anupammo/credifyfbs`, `anupammo/credify-login`) · **XAMPP** (Win
 ```
 credifyfbs/
 │
-├── manifest.json                # v1.0 MV3 extension root
-├── background.js                # Service worker — opens app window
-├── newtab.html / newtab.js      # Host page + storage bridge
-├── app.html                     # Full form builder UI (~22 000 lines)
+├── app.html                     # Full form builder UI (~22 000 lines) — the webapp, served standalone
 ├── fill.html                    # v4.1 public patient fill page (/f/<token>)
 ├── errors/                      # v4.1 branded 404 / 403 / 50x pages (nginx error_page)
-├── deploy.sh                    # v4.2 one-command VM deploy + status/logs/db helpers
+├── deploy.sh                    # one-command VM deploy + status/logs/db helpers
 ├── .gitattributes               # force LF on *.sh so deploy.sh runs on the Linux VM
-├── icons/                       # Extension toolbar icons
+├── favicon.ico / icon.png / apple-icon.png   # webapp icons
+│
+├── legacy/
+│   └── chrome-extension/        # ARCHIVED v1.0 MV3 launcher (retired — not shipped)
+│       ├── manifest.json        #   MV3 config
+│       ├── background.js        #   service worker — opened the app popup
+│       ├── newtab.html / newtab.js  #   host page + chrome.storage↔localStorage bridge
+│       ├── icons/               #   extension toolbar icons (16/48/128)
+│       └── README.md            #   what it was + how it worked
 │
 ├── backend/                     # ✅ v1.1 Next.js 16 API backend (scaffolded)
 │   ├── app/api/
@@ -997,18 +1003,18 @@ Request ──▶ withAuth middleware (verify JWT)
 
 ---
 
-## 10. Extension ↔ Backend Integration
+## 10. Webapp ↔ Backend Integration
 
 ### Strategy
 
-The extension operates in a **hybrid, offline-first mode**:
+The webapp operates in a **hybrid, offline-first mode**:
 
 1. **Online mode** — signed in (valid JWT) → data is pulled from the backend into localStorage on load and every form/block change is mirrored back to the API. localStorage remains the working store (offline cache).
 2. **Offline mode** — "Work Offline" or no session → the builder runs entirely on localStorage; API calls are inert until the next sign-in.
 
 ### v4 implementation — `window.CredifyAPI` inside `app.html` (current)
 
-As of **v4**, the backend client lives **directly in the sandboxed `app.html`** rather than being mediated by `background.js`. The sandbox CSP (`connect-src https://chrome.credifyfast.com …`) permits the `fetch` calls, and the API responds with permissive CORS, so the builder talks to the backend over HTTPS without a host-page relay.
+The backend client lives **directly in `app.html`** rather than being mediated by a service worker. The API responds with permissive CORS, so the webapp talks to the backend over HTTPS without any host-page relay.
 
 **Boot & auth flow**
 ```
@@ -1032,7 +1038,7 @@ app.html loads
 
 **Sync scope (Phase 1)** — Forms (create/update/delete) and Blocks (create/delete) write through to the API, with localStorage fallback when offline. Users/Groups/Shares are **pulled read-only** on login; full write-sync (server-id reconciliation, password-collecting invite UI) and backend tables for the new entities (Contacts, Reports, Bundles, Delivery, System-form overrides) are deferred to a later phase.
 
-### ApiClient (background.js) — earlier host-mediated sketch (superseded by the in-app client above)
+### ApiClient (background.js) — _legacy_ host-mediated sketch (superseded by the in-app client above; see `legacy/chrome-extension/`)
 
 ```javascript
 // background.js — conceptual sketch
@@ -1058,11 +1064,14 @@ class ApiClient {
 }
 ```
 
-### localStorage Bridge (app.html shim — v1.1)
+### localStorage Bridge — _legacy_ (extension only)
 
-The existing `postMessage` bridge is extended: writes go to `newtab.js`, which forwards them to the service worker, which calls the backend API.
+> This `postMessage` bridge applied **only** to the old Chrome-extension packaging
+> (now archived in `legacy/chrome-extension/`). The webapp writes to `localStorage`
+> directly and syncs via `window.CredifyAPI` — there is no bridge.
 
 ```
+(legacy extension path)
 app.html setItem() → postMessage → newtab.js → chrome.runtime.sendMessage
                                                 → background.js ApiClient.put('/forms/:id')
 ```
