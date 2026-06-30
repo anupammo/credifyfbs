@@ -904,7 +904,7 @@ Refresh Token  — Opaque 256-bit random token, stored as bcrypt hash in DB
                  Revocation: delete row or set revokedAt timestamp
 ```
 
-The Chrome Extension stores tokens in `chrome.storage.local` (not accessible to page scripts). The service worker intercepts API calls and attaches the `Authorization` header automatically, refreshing when the access token is within 60 seconds of expiry.
+On the web, auth is primarily the **`credify_token` SSO cookie** (scoped to `.credifyfast.com`, sent automatically with `credentials:'include'`). The in-app `window.CredifyAPI` client also keeps JWT tokens in `localStorage` (`credify_auth_tokens`) as a bearer fallback and attaches the `Authorization` header, refreshing when the access token is within 60 seconds of expiry. _(The retired extension stored these in `chrome.storage.local` via its service worker — see `legacy/chrome-extension/`.)_
 
 ### 8.3 Form Schema Encryption (At-Rest)
 
@@ -958,7 +958,7 @@ Request ──▶ withAuth middleware (verify JWT)
 - **Rate limiting**: 100 req/min per IP on auth endpoints, 500 req/min on data endpoints (via `@upstash/ratelimit` or custom middleware)
 - **Input validation**: All request bodies validated with **Zod** schemas before reaching business logic
 - **SQL injection**: Impossible — all DB access via **Prisma** parameterised queries
-- **CORS**: Restricted to the extension's `chrome-extension://` origin
+- **CORS**: open (`Access-Control-Allow-Origin *`) so the webapp at `forms.credifyfast.com` can call the API at `chrome.credifyfast.com`; auth is enforced per-request via the SSO cookie / JWT, not by origin
 - **Audit logging**: Every create / update / delete / share action recorded in `audit_logs` with actor, timestamp, and changed entity ID
 - **Soft deletes**: Forms and users are never hard-deleted (compliance / accidental-delete recovery)
 - **GCP CMEK**: Cloud SQL configured with customer-managed encryption keys
@@ -967,9 +967,21 @@ Request ──▶ withAuth middleware (verify JWT)
 
 ## 9. Authentication Flow
 
+**Webapp (current):** an unauthenticated load of `forms.credifyfast.com` redirects to
+`login.credifyfast.com` (SSO), which authenticates and redirects back with the JWT in
+the URL (`#access_token=…&refresh_token=…`). `ingestSsoTokens()` reads them, stores the
+session, fetches the user, and strips them from the URL. The shared `credify_token`
+cookie (scoped to `.credifyfast.com`) carries the session across the `*.credifyfast.com`
+apps; the JWT in `localStorage` is the bearer fallback. A `?offline=1` escape hatch keeps
+an in-app modal for local/QA.
+
+The diagram below shows the **legacy bearer flow** as used by the retired Chrome
+extension (`background.js` + `chrome.storage.local`); the request/refresh half still
+applies to the webapp's `CredifyAPI` client, minus the service-worker relay.
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                        LOGIN FLOW                                    │
+│                  LOGIN FLOW (legacy extension — bearer)              │
 │                                                                      │
 │  User enters credentials in extension UI                             │
 │       │                                                              │
@@ -1383,7 +1395,7 @@ hmac-secret       → HMAC_SECRET
 
 ## 14. Roadmap
 
-> Listed newest first — **planned** milestones at the top, **completed** below. Versions are monotonic: `v1.0 → v1.1 → v1.2 → v4 → v4.1` shipped (the jump to `v4` is the prototype-merge branch), with `v4.2`/`v5.0` next.
+> Listed newest first — **planned** milestones at the top, **completed** below. Versions are monotonic: `v1.0 → v1.1 → v1.2 → v4 → v4.1 → v4.2 → v4.4` shipped (the jump to `v4` is the prototype-merge branch), with `v5.0` next.
 
 ### v5.0 — Platform (planned)
 
@@ -1394,7 +1406,15 @@ hmac-secret       → HMAC_SECRET
 - [ ] Form analytics (completion rates, average scores)
 - [ ] GCP infrastructure provisioning (Terraform)
 
-### v4.2 — Persistence, Weighting & DevOps · Submission Pipeline 🚧 In progress (current branch)
+### v4.4 — Show Fields show/hide + webapp consolidation ✅ Shipped (current branch)
+
+- [x] **Webapp-first**: the Chrome MV3 extension launcher is **retired and archived** under `legacy/chrome-extension/`; `app.html` is the product, served standalone at `forms.credifyfast.com`. Docs reframed accordingly (see [§2](#2-current-state--webapp), [§10](#10-webapp--backend-integration)). A separate *external* extension may be added later to enhance — not host — the webapp.
+- [x] **Show Fields — stackable WHEN → show/hide rules engine**: each rule = one condition + a set of fields to **Show** and a set to **Hide** when met; overlapping rules combine with AND (a field is shown only if every rule agrees). Compiles to per-field `showIf` so preview *and* exported forms enforce it.
+- [x] **Explicit "Hide these fields" list** in the per-field editor (alongside "Show these fields"): listed fields are hidden when the condition is met (compiles to an inverted rule). Rule badges now read **"Hidden when …"** / **"Shown when …"** correctly.
+- [x] **Unified visibility entry**: a field's **eye** button now opens the same Show Fields **manager** the toolbar opens, pre-filtered and scrolled to that field — one surface instead of two divergent screens.
+- [x] **`deploy.sh`** publishes `app.html` and refreshes the `index.html` symlink (single source of truth); default branch `v4.4`.
+
+### v4.2 — Persistence, Weighting & DevOps · Submission Pipeline 🚧 In progress
 
 A round of "make it real" fixes — wiring stubbed UI to the live database, correcting a
 feature that never did what its label claimed, and removing per-deploy toil.
@@ -1493,22 +1513,28 @@ Merges the new design prototype with the existing Next.js / Prisma / PostgreSQL 
 - [x] GitHub Actions CI/CD → GCP Cloud Run (`deploy.yml`)
 - [x] Multiple instance UI fix
 
-### v1.0 — Local Extension ✅ Complete
+### v1.0 — Local Extension ✅ Complete _(later retired — see v4.4)_
 
-- [x] MV3 Chrome Extension with sandboxed `app.html` builder
+- [x] MV3 Chrome Extension with sandboxed `app.html` builder _(now archived in `legacy/chrome-extension/`)_
 - [x] `chrome.storage.local` persistence via `postMessage` bridge
 - [x] Full form builder UI — drag-and-drop, scoring, skip logic, RBAC (seeded, no real auth)
 
 ---
 
-## v1.0 Extension — Technical Notes
+## v1.0 Extension — Technical Notes _(legacy — retired in v4.4)_
 
-### Sandbox architecture (preserved in v1.1)
+> **This section describes the retired Chrome-extension packaging only.** The
+> webapp serves `app.html` as a normal page, so none of the sandbox/shim
+> constraints below apply: inline handlers work natively and `localStorage` is
+> used directly (no `postMessage` bridge, no service worker). Kept for reference;
+> the files live in `legacy/chrome-extension/`.
 
-The inline-handler and `localStorage` constraints of MV3 remain in v1.1. The sandbox approach is kept intact:
+### Sandbox architecture (extension only)
 
-- **Inline handlers** (`onclick="..."`, `onchange="..."`) — only work inside a sandboxed page; this is non-negotiable in MV3 without a full rewrite.
-- **localStorage shim** — extended in v1.1 to forward writes both to the service worker (for API sync) and to `chrome.storage.local` (for offline cache).
+Under MV3 the builder had to run as a **sandboxed page**:
+
+- **Inline handlers** (`onclick="..."`, `onchange="..."`) — only worked inside a sandboxed page; MV3 blocks them on regular extension pages. _(On the web they work everywhere — no sandbox needed.)_
+- **localStorage shim** — the extension forwarded writes to the service worker (for API sync) and to `chrome.storage.local` (for offline cache). _(The webapp writes `localStorage` directly.)_
 
 ### Sandbox permissions (manifest.json)
 
@@ -1527,9 +1553,9 @@ Instrument Serif + Sora load from Google Fonts. The sandbox CSP allows `https://
 
 ---
 
-**Version** v4 (New Prototype UI + Live Backend Integration)  
+**Version** v4.4 (Webapp · New Prototype UI + Live Backend Integration)  
 **Maintainer** Credify Internal Engineering  
-**Branch** `v4` · MV3 · Chrome / Edge / Brave / Opera 
+**Branch** `v4.4` · Webapp (any modern browser) · served at `forms.credifyfast.com` 
 
 ---
 

@@ -1,8 +1,8 @@
 # CredifyFBS — Feature Status
 
 **Product:** Credify Form Builder Suite
-**Version:** v4.3
-**Last reviewed:** 25 June 2026
+**Version:** v4.4
+**Last reviewed:** 30 June 2026
 **Audience:** Everyone — written in plain language, with a technical appendix at the end.
 
 ---
@@ -35,6 +35,7 @@ Every feature below is marked with one of three labels:
 | 8 | Reports | 🟡 Partial |
 | 9 | Scoring | 🟢 Done |
 | 10 | Weightage | 🟢 Done |
+| 11 | Conditional visibility (Show / Hide Fields) | 🟢 Done |
 | — | **Responses Inbox** (view submitted answers) | 🔴 Pending |
 | — | **Automated email/SMS notifications** | 🔴 Pending |
 
@@ -65,6 +66,9 @@ Forms can calculate a score from the answers given, with a dedicated scoring set
 
 ### 10. Weightage — 🟢 Done
 Individual questions can be given different weights, so more important answers count for more in the score and completion total.
+
+### 11. Conditional visibility (Show Fields) — 🟢 Done
+Fields can be **shown or hidden based on the answers to other fields** (or a score). Open **Show Fields** from the toolbar to manage every field's rule in one place, or click a field's **eye** button to jump straight to that field in the same manager. For each rule you choose a condition (e.g. "when *Referral source* is *Insurance*") and then pick fields to **Show** *and* fields to **Hide** when it's met. Rules **stack** — a field controlled by several rules is shown only when all of them agree — and a rule can target a **group of fields** so they appear or disappear together. Conditions support **AND / OR / NOT** and can read another form's answers.
 
 ---
 
