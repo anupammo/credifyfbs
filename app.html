@@ -5790,7 +5790,7 @@ function renderCanvas(){
       // Fields stay fully visible while editing — only Preview/export hide them.
       const condClass = field.showIf ? ' field-conditional' : '';
       const condBadge = field.showIf
-        ? `<div class="field-cond-badge" title="Show Fields rule — shown when ${esc(describeShowIf(field.showIf))}"><span class="fcb-tag">Show Fields</span><span class="fcb-rule">👁 ${esc(describeShowIf(field.showIf))}</span></div>`
+        ? `<div class="field-cond-badge" title="Show Fields rule — ${ruleVerb(field.showIf).toLowerCase()} when ${esc(describeShowIf(field.showIf))}"><span class="fcb-tag">Show Fields</span><span class="fcb-rule">${field.showIf.invert?'🙈':'👁'} ${ruleVerb(field.showIf)} when ${esc(describeShowIf(field.showIf))}</span></div>`
         : '';
       const keyBadge = field.dataKey
         ? `<div class="field-key-badge" title="Auto-fills across forms via the shared key “${esc(field.dataKey)}”">⇄ ${esc(field.dataKey)}</div>`
@@ -7669,6 +7669,10 @@ function describeShowIf(c){
   return `${lbl} ${sym} ${c.value}`;
 }
 
+/* "Shown" / "Hidden" verb for a rule, so badges read correctly for the
+   auto-inverse (hide-when-met) branch as well as plain show rules. */
+function ruleVerb(showIf){ return (showIf && showIf.invert) ? 'Hidden' : 'Shown'; }
+
 /* Candidate controller fields for a field/row target: every CONTROLLER_TYPE
    field except the target field itself (and, for a row target, the fields in
    that same row). */
@@ -8202,10 +8206,10 @@ function renderDisplayFields(){
   });
   h+=`</div></div>`;
 
-  // ===== Otherwise show these fields (auto-inverse ELSE branch) =====
+  // ===== Hide these fields (auto-inverse branch: hidden when the condition is met) =====
   h+=`<div class="disp-section">
-    <div class="disp-section-head"><span class="disp-section-title">Otherwise show these fields <span class="disp-opt-tag">optional</span></span>${DISP_SHOW_ELSE.length?`<span class="disp-show-count">${DISP_SHOW_ELSE.length} selected</span>`:''}</div>
-    <p class="disp-cond-help">Shown when the condition above is <b>not</b> met — the exact opposite of the fields above. Leave empty if nothing should appear on the “else” case.</p>`;
+    <div class="disp-section-head"><span class="disp-section-title">Hide these fields <span class="disp-opt-tag">optional</span></span>${DISP_SHOW_ELSE.length?`<span class="disp-show-count">${DISP_SHOW_ELSE.length} selected</span>`:''}</div>
+    <p class="disp-cond-help">Hidden when the condition above is <b>met</b> (and shown when it isn’t) — the exact opposite of the “Show these fields” list. Leave empty if nothing should be hidden.</p>`;
   if(DISP_SHOW_ELSE.length){
     h+=`<div class="disp-show-chips">`;
     DISP_SHOW_ELSE.forEach(id=>{ const f=findFieldById(id); if(!f) return;
@@ -8217,7 +8221,7 @@ function renderDisplayFields(){
   h+=`<div class="disp-results">`;
   if(!elseCands.length){ h+=`<div class="disp-empty">No more fields to add.</div>`; }
   else elseCands.forEach(f=>{
-    h+=`<button type="button" class="disp-result" onclick="dispAddElseField('${f.id}')" title="Show this field when the condition is NOT met">
+    h+=`<button type="button" class="disp-result" onclick="dispAddElseField('${f.id}')" title="Hide this field when the condition is met">
       <span class="disp-result-name">${esc(f.label||'Untitled')}</span>
       <span class="disp-pill">${esc(fieldTypeName(f))}</span>
       <span class="disp-plus">+ add</span>
@@ -8412,8 +8416,9 @@ function dispRemoveShowField(fieldId){
   DISP_SHOW=DISP_SHOW.filter(x=>x!==fieldId);
   renderDisplayFields();
 }
-// === "Otherwise show" (ELSE) helpers — these fields reveal when the condition is
-// NOT met (the auto-inverse of the show-list above). A field can't be in both.
+// === "Hide these fields" helpers — these fields are hidden when the condition IS
+// met (the auto-inverse of the show-list above: stamped with invert:true on save,
+// so they reveal only when the condition is not met). A field can't be in both.
 function dispAddElseField(fieldId){
   if(DISP_SHOW.indexOf(fieldId)>=0) return;
   if(DISP_SHOW_ELSE.indexOf(fieldId)<0) DISP_SHOW_ELSE.push(fieldId);
@@ -8823,7 +8828,7 @@ function inspectorAppliedConditionHTML(field){
   if(!own && !controlled.length) return '';
   let rows='';
   if(own){
-    rows += `<div class="applied-cond-row"><b>Shown when</b> ${esc(describeShowIf(own))}</div>`;
+    rows += `<div class="applied-cond-row"><b>${ruleVerb(own)} when</b> ${esc(describeShowIf(own))}</div>`;
   }
   if(controlled.length){
     const pc = controlled[0].showIf.conditions.find(c=>c.fieldId===field.id) || controlled[0].showIf.conditions[0];
@@ -8956,7 +8961,7 @@ function renderDisplayManager(){
           <span class="dispmgr-name">${esc(f.label||'Untitled')}</span>
           <span class="disp-pill">${esc(fieldTypeName(f))}</span>
         </div>
-        <div class="dispmgr-rule${rule?'':' none'}">${rule?('Shown when '+esc(describeShowIf(cond))):'Always shown'}</div>
+        <div class="dispmgr-rule${rule?'':' none'}">${rule?(ruleVerb(cond)+' when '+esc(describeShowIf(cond))):'Always shown'}</div>
         <button class="btn build-only${rule?' primary':''}" onclick="dispEditFromManager('${scope}')">${rule?'Edit':'Set rule'}</button>
       </div>`;
     });
