@@ -4353,6 +4353,16 @@ body.block-selecting .field.block-sel{border-color:var(--green-primary);box-shad
   </div>
 </div>
 
+<div class="modal-overlay" id="frules-modal">
+  <div class="modal" style="max-width:820px;width:94vw">
+    <div class="modal-head"><h3>Field rules — show / hide</h3>
+      <button class="x-btn" title="Cancel" onclick="closeFieldRules()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body"><div id="frules-body"></div></div>
+    <div class="modal-foot"><button class="btn" onclick="closeFieldRules()">Cancel</button><button class="btn primary" onclick="saveFieldRules()">Save rules</button></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="branch-modal">
   <div class="modal" style="max-width:760px;width:94vw">
     <div class="modal-head"><h3 id="branch-title">Branch fields by answer</h3>
@@ -4382,7 +4392,7 @@ body.block-selecting .field.block-sel{border-color:var(--green-primary);box-shad
 <div class="modal-overlay" id="dispmgr-modal">
   <div class="modal dispmgr-box" style="max-width:880px;width:94vw">
     <div class="modal-head"><h3>Show Fields</h3><div style="display:flex;align-items:center;gap:6px"><button class="btn" id="conditions-help-btn" style="font-size:14px;font-weight:700;padding:5px 11px;line-height:1" onclick="startWizard('conditions')" title="Open the Conditions walkthrough" aria-label="Open the Conditions walkthrough">?</button><button class="x-btn" onclick="closeModal('dispmgr-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
-    <div class="modal-body"><p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">Manage which fields show or hide, and on what conditions — all from one place.</p><div id="dispmgr-body"></div></div>
+    <div class="modal-body"><p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px">Manage which fields show or hide, and on what conditions — all from one place.</p><button class="btn build-only" style="margin:0 0 12px" onclick="closeModal('dispmgr-modal');openFieldRules()" title="Build a stack of WHEN → show/hide rules">⚖ Stack show / hide rules…</button><div id="dispmgr-body"></div></div>
     <div class="modal-foot" style="justify-content:space-between"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn build-only" id="clear-showfields-btn" onclick="clearAllShowFieldsRules()" title="Remove every Show Fields rule on this form — all fields go back to Always shown">⌫ Clear all rules</button></div><button class="btn primary" onclick="closeModal('dispmgr-modal')">Done</button></div>
   </div>
 </div>
@@ -8472,6 +8482,125 @@ function renderBranchEditor(){
 function branchAdd(k,id){ if(!BRANCH_MAP[k]) BRANCH_MAP[k]=[]; if(BRANCH_MAP[k].indexOf(id)<0) BRANCH_MAP[k].push(id); renderBranchEditor(); }
 function branchRemove(k,id){ if(BRANCH_MAP[k]) BRANCH_MAP[k]=BRANCH_MAP[k].filter(x=>x!==id); renderBranchEditor(); }
 function closeBranchEditor(){ closeModal('branch-modal'); }
+
+/* ===== Stackable WHEN → SHOW + HIDE field rules ==============================
+   A list of independent rules, each = one condition + a set of fields to SHOW and
+   a set to HIDE when that condition is met. The list is the editable source of
+   truth (FORM.fieldRules); on save it's COMPILED into per-field showIf blocks so
+   the standard evaluator (preview AND exported form) enforces it. Overlap combines
+   with AND: a field targeted by several rules is shown only if every rule agrees. */
+let FRULES=[];
+function ensureFieldRules(){ if(!Array.isArray(FORM.fieldRules)) FORM.fieldRules=[]; return FORM.fieldRules; }
+function compileFieldRules(){
+  ensureFieldRules();
+  const rules=(FORM.fieldRules||[]).filter(r=>r && r.ctrl && r.op);
+  const byField={};
+  rules.forEach(r=>{
+    const base={type:'field', fieldId:r.ctrl, op:r.op};
+    if(r.value!==undefined && r.value!==null && r.value!=='') base.value=r.value;
+    if(r.value2!==undefined && r.value2!==null && r.value2!=='') base.value2=r.value2;
+    (r.show||[]).forEach(fid=>{ (byField[fid]=byField[fid]||[]).push(Object.assign({},base)); });
+    (r.hide||[]).forEach(fid=>{ (byField[fid]=byField[fid]||[]).push(Object.assign({},base,{neg:true})); });
+  });
+  // Clear fields that were rule-driven before but aren't targeted now.
+  (FORM._ruleFields||[]).forEach(fid=>{ if(!byField[fid]){ const f=findFieldById(fid); if(f && f.showIf && f.showIf._fromRules) f.showIf=null; } });
+  Object.keys(byField).forEach(fid=>{ const f=findFieldById(fid); if(!f) return; f.showIf={block:true, match:'all', _fromRules:true, conditions:byField[fid]}; });
+  FORM._ruleFields=Object.keys(byField);
+}
+function openFieldRules(){
+  if(typeof currentFormReadOnly==='function' && currentFormReadOnly()){ toast('Read-only — can’t modify this form'); return; }
+  ensureFieldRules();
+  FRULES=JSON.parse(JSON.stringify(FORM.fieldRules));
+  if(!FRULES.length) FRULES.push({id:uid('fr'), ctrl:'', op:'any', show:[], hide:[]});
+  renderFieldRules();
+  openModal('frules-modal');
+}
+function closeFieldRules(){ closeModal('frules-modal'); }
+function frAddRule(){ FRULES.push({id:uid('fr'), ctrl:'', op:'any', show:[], hide:[]}); renderFieldRules(); dispScrollToBlock&&0; }
+function frRemoveRule(ri){ FRULES.splice(ri,1); renderFieldRules(); }
+function ruleSetCtrl(ri,v){ const r=FRULES[ri]; if(!r) return; r.ctrl=v; r.op='any'; delete r.value; delete r.value2; renderFieldRules(); }
+function ruleSetOp(ri,v){ const r=FRULES[ri]; if(!r) return; r.op=v; if(!RANGE_OPS.has(v)) delete r.value2; renderFieldRules(); }
+function ruleSetVal(ri,v){ const r=FRULES[ri]; if(r) r.value=v; }
+function ruleSetVal2(ri,v){ const r=FRULES[ri]; if(r) r.value2=v; }
+function frAddShow(ri,fid){ const r=FRULES[ri]; if(!r||!fid) return; r.hide=(r.hide||[]).filter(x=>x!==fid); if((r.show=r.show||[]).indexOf(fid)<0) r.show.push(fid); renderFieldRules(); }
+function frAddHide(ri,fid){ const r=FRULES[ri]; if(!r||!fid) return; r.show=(r.show||[]).filter(x=>x!==fid); if((r.hide=r.hide||[]).indexOf(fid)<0) r.hide.push(fid); renderFieldRules(); }
+function frDropShow(ri,fid){ const r=FRULES[ri]; if(r) r.show=(r.show||[]).filter(x=>x!==fid); renderFieldRules(); }
+function frDropHide(ri,fid){ const r=FRULES[ri]; if(r) r.hide=(r.hide||[]).filter(x=>x!==fid); renderFieldRules(); }
+// Operator + value UI for a rule's single condition (mirrors the Show-Fields value
+// pickers: option dropdowns, number, date, text — never free-typing option values).
+function ruleValueHTML(ri, f, r){
+  const ANY=[{v:'any',l:'has any answer'},{v:'none',l:'has no answer'}];
+  function opSel(ops){ const all=ANY.concat(ops); return '<select class="fr-op enhance-dd" onchange="ruleSetOp('+ri+',this.value)">'+all.map(o=>'<option value="'+o.v+'"'+(r.op===o.v?' selected':'')+'>'+esc(o.l)+'</option>').join('')+'</select>'; }
+  const novalue=(r.op==='any'||r.op==='none'||r.op==='filled'||r.op==='empty');
+  const opts=(f.options&&f.options.length)?f.options:(f.type==='state'?US_STATES:[]);
+  if(f.type==='radio'||f.type==='select'||f.type==='state'){
+    const ops=[{v:'eq',l:'is'},{v:'neq',l:'is not'}];
+    let h=opSel(ops); if(novalue) return h;
+    const cur=(r.value!=null)?String(r.value):'';
+    h+='<select class="fr-val enhance-dd dd-search" onchange="ruleSetVal('+ri+',Number(this.value))"><option value="">— choose —</option>'+opts.map((o,i)=>'<option value="'+i+'"'+(cur===String(i)?' selected':'')+'>'+esc(String(o))+'</option>').join('')+'</select>'; return h;
+  }
+  if(f.type==='checkboxes'){
+    const ops=[{v:'includes',l:'includes'},{v:'notincludes',l:'does not include'}];
+    let h=opSel(ops); if(novalue) return h;
+    const cur=(r.value!=null)?String(r.value):'';
+    h+='<select class="fr-val enhance-dd dd-search" onchange="ruleSetVal('+ri+',Number(this.value))"><option value="">— choose —</option>'+opts.map((o,i)=>'<option value="'+i+'"'+(cur===String(i)?' selected':'')+'>'+esc(String(o))+'</option>').join('')+'</select>'; return h;
+  }
+  if(DATE_CTRL_TYPES.has(f.type)){
+    let h=opSel(DATE_OPS); if(novalue) return h;
+    const it=f.type==='datetime'?'datetime-local':'date';
+    h+='<input type="'+it+'" class="fr-val" value="'+esc(r.value!=null?r.value:'')+'" oninput="ruleSetVal('+ri+',this.value)">'; return h;
+  }
+  if(NUMERIC_CTRL_TYPES.has(f.type)){
+    let h=opSel(NUM_OPS); if(novalue) return h;
+    h+='<input type="number" class="fr-val" value="'+esc(r.value!=null?r.value:'')+'" oninput="ruleSetVal('+ri+',this.value)">';
+    if(RANGE_OPS.has(r.op)) h+='<span class="disp-and">and</span><input type="number" class="fr-val" value="'+esc(r.value2!=null?r.value2:'')+'" oninput="ruleSetVal2('+ri+',this.value)">';
+    return h;
+  }
+  if(BOOL_CTRL_TYPES.has(f.type)){ return opSel([{v:'checked',l:'is checked'},{v:'unchecked',l:'is not checked'}]); }
+  // text-like
+  let h=opSel(STR_OPS); if(novalue) return h;
+  h+='<input type="text" class="fr-val" value="'+esc(r.value!=null?r.value:'')+'" oninput="ruleSetVal('+ri+',this.value)" placeholder="value">'; return h;
+}
+function renderFieldRules(){
+  const body=document.getElementById('frules-body'); if(!body) return;
+  const ctrls=FORM.rows.flatMap(row=>row.fields).filter(f=>CONTROLLER_TYPES.has(f.type));
+  const fillable=FORM.rows.flatMap(row=>row.fields).filter(f=>!DISPLAY_ONLY_TYPES.has(f.type));
+  let h='<p class="disp-cond-help">Add as many rules as you need. Each rule shows and/or hides fields when its condition is met. A field affected by several rules is shown only if <b>all</b> of them agree.</p>';
+  if(!FRULES.length){ h+='<div class="disp-empty">No rules yet.</div>'; }
+  FRULES.forEach((r,ri)=>{
+    const f=r.ctrl?findFieldById(r.ctrl):null;
+    h+='<div class="disp-section" style="border:1px solid var(--border);border-radius:10px;padding:12px">';
+    h+='<div class="disp-section-head"><span class="disp-section-title">Rule '+(ri+1)+'</span><button class="role-del" title="Delete rule" onclick="frRemoveRule('+ri+')">✕</button></div>';
+    // WHEN
+    h+='<div class="fr-when" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px"><b style="font-size:12px">WHEN</b>';
+    h+='<select class="fr-ctrl enhance-dd" onchange="ruleSetCtrl('+ri+',this.value)"><option value="">— choose a field —</option>'+ctrls.map(c=>'<option value="'+c.id+'"'+(r.ctrl===c.id?' selected':'')+'>'+esc(c.label||'Untitled')+'</option>').join('')+'</select>';
+    if(f) h+=ruleValueHTML(ri,f,r);
+    h+='</div>';
+    // SHOW + HIDE pickers
+    ['show','hide'].forEach(kind=>{
+      const sel=r[kind]||[];
+      const label=kind==='show'?'Show these fields':'Hide these fields';
+      h+='<div style="margin-bottom:8px"><div style="font-size:12px;font-weight:700;color:'+(kind==='show'?'var(--green-primary)':'var(--problem,#c92a2a)')+';margin-bottom:4px">'+label+'</div>';
+      if(sel.length){ h+='<div class="disp-show-chips">'; sel.forEach(id=>{ const ff=findFieldById(id); if(!ff)return; h+='<span class="disp-show-chip"><span class="disp-show-chip-name">'+esc(ff.label||'Untitled')+'</span><button onclick="'+(kind==='show'?'frDropShow':'frDropHide')+'('+ri+',\''+id+'\')" title="Remove">✕</button></span>'; }); h+='</div>'; }
+      const used=new Set([].concat(r.show||[],r.hide||[],[r.ctrl]));
+      const adds=fillable.filter(x=>!used.has(x.id));
+      h+='<select class="enhance-dd dd-search" onchange="'+(kind==='show'?'frAddShow':'frAddHide')+'('+ri+',this.value);this.value=\'\'"><option value="">+ add a field…</option>'+adds.map(x=>'<option value="'+x.id+'">'+esc(x.label||'Untitled')+'</option>').join('')+'</select>';
+      h+='</div>';
+    });
+    h+='</div>';
+  });
+  h+='<button class="btn" style="width:100%;margin-top:4px" onclick="frAddRule()">+ Add another rule</button>';
+  body.innerHTML=h;
+  try{ enhanceDropdowns(body); }catch(e){}
+}
+function saveFieldRules(){
+  // keep only rules that have a controller + at least one target
+  FORM.fieldRules=FRULES.filter(r=>r && r.ctrl && r.op && ((r.show&&r.show.length)||(r.hide&&r.hide.length)));
+  compileFieldRules();
+  saveForm(); render();
+  closeFieldRules();
+  try{ toast('Field rules saved'); }catch(e){}
+}
 function saveBranchEditor(){
   const fieldId=BRANCH_FIELD_ID; if(!fieldId) return;
   const mapped=new Set();
@@ -15895,7 +16024,7 @@ function usDateOpen(btn){var box=btn.closest('.us-date');var nat=box?box.querySe
   }
   function evalCond(c){
     if(!c) return true;
-    if(c.block){ var cs=c.conditions||[]; if(!cs.length) return true; var ev=function(x){ var r=evalCond(x); return (x&&x.neg)?!r:r; }; var hasConj=cs.some(function(x,i){return i>0&&(x.conj==='and'||x.conj==='or');}); if(!hasConj) return c.match==='any'?cs.some(ev):cs.every(ev); var acc=ev(cs[0]); for(var i=1;i<cs.length;i++){ acc=(cs[i].conj==='or')?(acc||ev(cs[i])):(acc&&ev(cs[i])); } return acc; }
+    if(c.block){ var cs=c.conditions||[]; var res; if(!cs.length){ res=true; } else { var ev=function(x){ var r=evalCond(x); return (x&&x.neg)?!r:r; }; var hasConj=cs.some(function(x,i){return i>0&&(x.conj==='and'||x.conj==='or');}); if(!hasConj){ res=(c.match==='any'?cs.some(ev):cs.every(ev)); } else { var acc=ev(cs[0]); for(var i=1;i<cs.length;i++){ acc=(cs[i].conj==='or')?(acc||ev(cs[i])):(acc&&ev(cs[i])); } res=acc; } } return c.invert?!res:res; }
     if(c.formId && c.formId!==SELF_ID){ return evalCrossForm(c); }
     if(c.type==='score'){ if(c.op==='any'||c.op==='none') return c.op==='any'; var s=sectionById(c.sectionId); if(!s) return true; return cmp(sectionScore(s), c.op, Number(c.value)||0, Number(c.value2)||0); }
     if(c.type==='page'){ return pageFilledRT(Number(c.page), c.mode==='required'?'required':'all'); }
