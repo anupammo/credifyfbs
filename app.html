@@ -8520,6 +8520,24 @@ function compileFieldRules(){
   Object.keys(byField).forEach(fid=>{ const f=findFieldById(fid); if(!f) return; f.showIf={block:true, match:'all', _fromRules:true, conditions:byField[fid]}; });
   FORM._ruleFields=Object.keys(byField);
 }
+/* Keep the two show/hide authoring paths from fighting. The per-field editor
+   ("Set rule" / Visibility) writes field.showIf directly; the Stack engine keeps
+   its own source of truth (FORM.fieldRules) and compiles INTO field.showIf. When
+   a field is edited or cleared per-field, drop it from every Stack rule so a
+   later Stack recompile can't override it or bring it back. Empty rules are
+   pruned and _ruleFields is kept in sync. Net effect: last editor wins, one
+   authority per field, no silent override. */
+function detachFieldsFromStackRules(ids){
+  if(!Array.isArray(FORM.fieldRules) || !ids || !ids.length) return;
+  const drop=new Set(ids.filter(Boolean));
+  if(!drop.size) return;
+  FORM.fieldRules.forEach(r=>{ if(!r) return;
+    if(Array.isArray(r.show)) r.show=r.show.filter(x=>!drop.has(x));
+    if(Array.isArray(r.hide)) r.hide=r.hide.filter(x=>!drop.has(x));
+  });
+  FORM.fieldRules=FORM.fieldRules.filter(r=>r && r.ctrl && ((r.show&&r.show.length)||(r.hide&&r.hide.length)));
+  if(Array.isArray(FORM._ruleFields)) FORM._ruleFields=FORM._ruleFields.filter(x=>!drop.has(x));
+}
 function openFieldRules(){
   if(typeof currentFormReadOnly==='function' && currentFormReadOnly()){ toast('Read-only — can’t modify this form'); return; }
   ensureFieldRules();
@@ -8760,6 +8778,10 @@ function persistDispBlock(){
     saveForm(); try{ renderScoringModal(); }catch(e){} try{ render(); }catch(e){} try{ renderPreviewIfNeeded(); }catch(e){}
     return;
   }
+  // Per-field / group authoring takes ownership of these fields: detach them
+  // from any Stack rule so a later Stack recompile can't override or resurrect
+  // them (prevents the two editors from fighting over the same field.showIf).
+  detachFieldsFromStackRules([].concat(DISP_SHOW||[], DISP_SHOW_ELSE||[], DISP_SHOW_ORIG||[], DISP_SHOW_ELSE_ORIG||[], (t.kind==='vgroup'&&t.obj)?(t.obj.fieldIds||[]):[]));
   if(t.kind==='vgroup' && t.obj){
     t.obj.fieldIds=DISP_SHOW.slice();
     t.obj.showIf=block;
@@ -8797,9 +8819,10 @@ function dispClearRule(){
   const t=resolveVizTarget(DISP_SCOPE);
   if(t.kind==='apcond'){ setVizCond(t, null); closeModal('dispfields-modal'); if(t.formId && FORM && t.formId!==FORM.id) syncFormToBackend(t.formId); else saveForm(); try{render();}catch(e){} if(DISP_FROM_AUTOPOP){ const _w=DISP_FROM_AUTOPOP; DISP_FROM_AUTOPOP=false; DISP_AP_MODE=false; DISP_CTXFORM=null; if(_w==='report'){ openModal('autopop-all-modal'); try{autopopRenderAllReport();}catch(e){} } else { openModal('autopop-modal'); try{autopopRenderAll();}catch(e){} } } return; }
   if(t.kind==='scfield'){ setVizCond(t, null); closeModal('dispfields-modal'); saveForm(); try{render();}catch(e){} if(DISP_FROM_SCORING){ DISP_FROM_SCORING=false; DISP_SCORE_MODE=false; openModal('scoring-modal'); try{renderScoringModal();}catch(e){} } return; }
-  if(t.kind==='vgroup' && t.obj){ t.obj.showIf=null; }
+  if(t.kind==='vgroup' && t.obj){ detachFieldsFromStackRules(t.obj.fieldIds||[]); t.obj.showIf=null; }
   else {
     const ids=DISP_SHOW_ORIG.length?DISP_SHOW_ORIG:DISP_SHOW;
+    detachFieldsFromStackRules(ids);
     ids.forEach(id=>{ const f=findFieldById(id); if(f) f.showIf=null; });
   }
   closeModal('dispfields-modal'); saveForm(); render();
@@ -9092,10 +9115,15 @@ function clearAllShowFieldsRules(){
   let n=0;
   (FORM.rows||[]).forEach(r=>(r.fields||[]).forEach(f=>{ if(f.showIf) n++; }));
   (FORM.visibilityGroups||[]).forEach(g=>{ if(g.showIf) n++; });
-  if(n===0){ toast('No Show Fields rules to clear'); return; }
+  const hasStack=(FORM.fieldRules||[]).some(r=>r && r.ctrl && ((r.show&&r.show.length)||(r.hide&&r.hide.length)));
+  if(n===0 && !hasStack){ toast('No Show Fields rules to clear'); return; }
   if(!confirm('Remove all '+n+' Show Fields rule'+(n===1?'':'s')+' on this form? Every field goes back to \u201cAlways shown.\u201d You can undo with Ctrl/Cmd+Z.')) return;
   (FORM.rows||[]).forEach(r=>(r.fields||[]).forEach(f=>{ if(f.showIf) delete f.showIf; }));
   FORM.visibilityGroups=[];
+  // Also clear the Stack engine's source of truth + its compiled-field tracker,
+  // or the rules recompile back the next time the Stack editor is opened/saved.
+  FORM.fieldRules=[];
+  FORM._ruleFields=[];
   saveForm();
   render();
   const m=document.getElementById('dispmgr-modal');
