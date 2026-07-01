@@ -18399,6 +18399,12 @@ function openUsersModal(){
    the live USERS record is never touched until Save. */
 let USERS_EXPAND={id:null,mode:null};
 let USER_DRAFT=null;
+let USERS_SEARCH='';
+// Manage Users search — filter rows by name / role / title. Full re-render per
+// keystroke, then restore focus + caret to the search box (mirrors the
+// Show-Fields manager search).
+function usersSearch(v){ USERS_SEARCH=v; renderUsersList(); const si=document.getElementById('users-search-input'); if(si){ si.focus(); const val=si.value; si.value=''; si.value=val; } }
+function usersClearSearch(){ USERS_SEARCH=''; renderUsersList(); const si=document.getElementById('users-search-input'); if(si) si.focus(); }
 function userExpandView(id){
   if(USERS_EXPAND.id===id && USERS_EXPAND.mode==='view'){ userCollapse(); return; }
   USERS_EXPAND={id,mode:'view'}; USER_DRAFT=null; renderUsersList();
@@ -18511,12 +18517,24 @@ function renderUsersList(){
       <button class="btn" onclick="var el=document.getElementById('new-discipline');addClinicalRole(el.value);el.value='';">+ Add</button>
     </div>
   </div>`;
+  // Search — filter users by name, role, or title (case-insensitive).
+  const _q=(USERS_SEARCH||'').trim().toLowerCase();
+  html+=`<div class="forms-search users-search${_q?' has-value':''}" id="users-search" style="margin:0 2px 10px">
+    <svg class="fs-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" id="users-search-input" placeholder="Search users by name, role, or title…" value="${esc(USERS_SEARCH)}" oninput="usersSearch(this.value)">
+    <button class="fs-clr" onclick="usersClearSearch()" title="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>`;
   // Drop a stale expand target (e.g. the expanded user was just deleted).
   if(USERS_EXPAND.id && !USERS.some(u=>u.id===USERS_EXPAND.id)){ USERS_EXPAND={id:null,mode:null}; USER_DRAFT=null; }
   const _eye='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   const _pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
   const _trash='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
-  USERS.forEach(u=>{
+  const _shown=USERS.filter(u=> !_q
+    || (u.name||'').toLowerCase().includes(_q)
+    || (u.role||'').toLowerCase().includes(_q)
+    || (u.title||'').toLowerCase().includes(_q));
+  if(!_shown.length){ html+=`<div class="disp-empty" style="padding:16px;text-align:center">No users match “${esc(USERS_SEARCH)}”.</div>`; }
+  _shown.forEach(u=>{
     const isSelf=u.id===CURRENT_USER_ID;
     const open=USERS_EXPAND.id===u.id;
     const mode=open?USERS_EXPAND.mode:null;
