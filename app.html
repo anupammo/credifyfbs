@@ -3363,6 +3363,26 @@ select.addr-part{appearance:auto;-webkit-appearance:auto;height:auto;min-height:
 .user-row-actions button svg{width:15px;height:15px}
 .user-row-actions .del:hover{border-color:var(--problem);background:var(--problem-soft);color:var(--problem)}
 .user-row .self-tag{font-size:9.5px;font-weight:700;color:var(--green-primary);background:var(--mint-pale-2);padding:1px 6px;border-radius:3px;letter-spacing:.04em}
+/* Concise user rows + inline View/Edit expand */
+.user-item{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--white);transition:border-color .12s,box-shadow .12s}
+.user-item.open{border-color:var(--green-primary);box-shadow:0 2px 12px rgba(13,31,24,.07)}
+.user-item .user-row{border:none;background:none}
+.user-item .user-row:hover{background:var(--mint-pale)}
+.user-item.open .user-row{border-bottom:1px solid var(--border);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--mint-pale)}
+.user-status-dot{width:8px;height:8px;border-radius:50%;background:var(--green-primary);flex-shrink:0;display:inline-block}
+.user-status-dot.off{background:var(--text-muted-2)}
+.user-inactive{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted-2);background:var(--surface);border:1px solid var(--border);padding:1px 6px;border-radius:3px}
+.user-row-actions button.uact.view:hover,.user-row-actions button.uact.edit:hover{border-color:var(--green-primary);background:var(--mint-pale);color:var(--green-primary)}
+.user-row-actions button.uact.on{border-color:var(--green-primary);background:var(--green-primary);color:#fff}
+.user-row-actions button:disabled{opacity:.4;cursor:not-allowed}
+.user-expand{padding:14px}
+.user-view-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:11px 16px}
+.uv-row{display:flex;flex-direction:column;gap:2px;min-width:0}
+.uv-l{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted-2)}
+.uv-v{font-size:13px;color:var(--text-main);word-break:break-word}
+.user-edit-sec{margin-top:13px}
+.user-edit-sec-h{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted-2);margin-bottom:7px}
+.user-edit-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px;padding-top:13px;border-top:1px solid var(--border)}
 
 .invite-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:13px;border:1.5px dashed var(--border);border-radius:var(--radius-sm);background:var(--surface);margin-bottom:14px}
 .invite-row .modal-field{flex:1 1 130px;margin-bottom:0}
@@ -18373,6 +18393,106 @@ function openUsersModal(){
   openModal('users-modal');
 }
 
+/* ── Concise Manage Users list: View / Edit inline expand (accordion) ──────
+   One row open at a time. View = read-only detail; Edit = editable draft with
+   explicit Save / Cancel. USER_DRAFT is a deep copy so Cancel just discards it —
+   the live USERS record is never touched until Save. */
+let USERS_EXPAND={id:null,mode:null};
+let USER_DRAFT=null;
+function userExpandView(id){
+  if(USERS_EXPAND.id===id && USERS_EXPAND.mode==='view'){ userCollapse(); return; }
+  USERS_EXPAND={id,mode:'view'}; USER_DRAFT=null; renderUsersList();
+}
+function userExpandEdit(id){
+  if(typeof currentFormReadOnly==='function' && currentFormReadOnly()){ toast('Read-only — can’t modify users'); return; }
+  const u=USERS.find(x=>x.id===id); if(!u) return;
+  USERS_EXPAND={id,mode:'edit'}; USER_DRAFT=JSON.parse(JSON.stringify(u)); renderUsersList();
+}
+function userCollapse(){ USERS_EXPAND={id:null,mode:null}; USER_DRAFT=null; renderUsersList(); }
+function userDraftSet(prop,raw,isCheckbox){ if(USER_DRAFT) applyProfileField(USER_DRAFT,prop,raw,isCheckbox); }
+function userDraftSetNotify(ch,on){ if(!USER_DRAFT) return; if(!USER_DRAFT.notify||typeof USER_DRAFT.notify!=='object') USER_DRAFT.notify={}; USER_DRAFT.notify[ch]=!!on; }
+function userDraftToggleTag(role){ if(!USER_DRAFT) return; if(!Array.isArray(USER_DRAFT.tags)) USER_DRAFT.tags=[]; const i=USER_DRAFT.tags.indexOf(role); if(i>=0) USER_DRAFT.tags.splice(i,1); else USER_DRAFT.tags.push(role); renderUsersList(); }
+function userSaveEdit(id){
+  const u=USERS.find(x=>x.id===id); if(!u||!USER_DRAFT) return;
+  const d=USER_DRAFT;
+  const nm=((d.name||'').trim()) || (((d.firstName||'')+' '+(d.lastName||'')).trim());
+  if(!nm){ toast('Name required'); return; }
+  d.name=nm;
+  const email=(d.email||'').trim();
+  if(!email){ toast('Email required'); return; }
+  if(USERS.some(x=>x.id!==id && (x.email||'').toLowerCase()===email.toLowerCase())){ toast('That email is already in use'); return; }
+  const newRole=d.role, oldRole=u.role;
+  d.role=oldRole; // the role transition goes through changeUserRole (keeps its guards)
+  const i=USERS.findIndex(x=>x.id===id); if(i>=0) USERS[i]=d;
+  USER_DRAFT=null; USERS_EXPAND={id,mode:'view'};
+  persistUsers(); syncUserToBackend(id);
+  if(newRole!==oldRole){ changeUserRole(id,newRole); } else { renderUsersList(); }
+  if(typeof renderUserMenu==='function') renderUserMenu();
+  toast('User updated');
+}
+function userViewPanel(u){
+  const tags=Array.isArray(u.tags)?u.tags:[];
+  const n=(u.notify&&typeof u.notify==='object')?u.notify:{};
+  const rows=[];
+  const add=(l,v)=>{ if(v!=null && String(v).trim()!=='') rows.push(`<div class="uv-row"><span class="uv-l">${esc(l)}</span><span class="uv-v">${esc(v)}</span></div>`); };
+  add('Preferred name',u.preferredName); add('Email',u.email); add('Phone',u.phone); add('Mobile',u.mobile);
+  add('Title',u.title); add('Company',u.company); add('Division',u.division);
+  add('Employee number',u.employeeNumber); add('Cost center',u.costCenter);
+  add('Time zone',u.timeZone); add('Language',u.language);
+  const notifyOn=['sms','email','ai'].filter(k=>n[k]).map(k=>k==='ai'?'AI':k.toUpperCase()).join(', ');
+  return `<div class="user-expand">
+    <div class="user-view-grid">
+      <div class="uv-row"><span class="uv-l">Role</span><span class="uv-v"><span class="role-badge ${u.role}">${esc(u.role)}</span></span></div>
+      <div class="uv-row"><span class="uv-l">Status</span><span class="uv-v">${(u.active!==false)?'Active':'Inactive'}</span></div>
+      ${rows.join('')}
+      ${tags.length?`<div class="uv-row"><span class="uv-l">Disciplines</span><span class="uv-v">${tags.map(esc).join(', ')}</span></div>`:''}
+      <div class="uv-row"><span class="uv-l">Notifications</span><span class="uv-v">${notifyOn||'None'}</span></div>
+    </div>
+    <div class="user-edit-foot"><button class="btn" onclick="userCollapse()">Close</button><button class="btn primary" onclick="userExpandEdit('${u.id}')">Edit</button></div>
+  </div>`;
+}
+function userEditPanel(u){
+  const d=USER_DRAFT||u;
+  const isSelf=u.id===CURRENT_USER_ID;
+  const tags=Array.isArray(d.tags)?d.tags:[];
+  const n=(d.notify&&typeof d.notify==='object')?d.notify:{};
+  const T=(prop,label,ph,type)=>`<label class="ucf"><span class="ucf-l">${label}</span><input type="${type||'text'}" value="${esc(d[prop]||'')}" placeholder="${esc(ph||'')}" onchange="userDraftSet('${prop}',this.value)"></label>`;
+  const tagChips = CLINICAL_ROLES.length
+    ? `<div class="user-edit-sec"><div class="user-edit-sec-h">Disciplines</div><div class="user-tags">${CLINICAL_ROLES.map(r=>{const on=tags.indexOf(r)>=0;return `<button class="utag${on?' on':''}" onclick="userDraftToggleTag(${JSON.stringify(r).replace(/"/g,'&quot;')})">${esc(r)}</button>`;}).join('')}</div></div>`
+    : '';
+  return `<div class="user-expand">
+    <div class="user-contact">
+      ${T('firstName','First name','First','text')}
+      ${T('lastName','Last name','Last','text')}
+      ${T('preferredName','Preferred name (optional)','Goes by…','text')}
+      ${T('email','Email','name@org.com','email')}
+      ${T('phone','Phone number','(619) 555-0100','tel')}
+      ${T('mobile','Mobile number','(619) 555-0142','tel')}
+      ${T('title','Title (optional)','e.g. Clinical Supervisor','text')}
+      ${T('company','Company name (optional)','Organization','text')}
+      ${T('division','Division','e.g. Outpatient','text')}
+      ${T('employeeNumber','Employee number','EMP-0001','text')}
+      ${T('costCenter','Cost center','CC-100','text')}
+      <label class="ucf"><span class="ucf-l">Time zone</span><select class="enhance-dd" onchange="userDraftSet('timeZone',this.value)">${tzOptions(d.timeZone||'')}</select></label>
+      <label class="ucf"><span class="ucf-l">Language</span><select class="enhance-dd" onchange="userDraftSet('language',this.value)">${langOptions(d.language||'')}</select></label>
+      <label class="ucf"><span class="ucf-l">Role</span><select class="enhance-dd" onchange="userDraftSet('role',this.value)" ${isSelf?'disabled title="Cannot change your own role"':''}><option value="viewer"${d.role==='viewer'?' selected':''}>Viewer</option><option value="editor"${d.role==='editor'?' selected':''}>Editor</option><option value="admin"${d.role==='admin'?' selected':''}>Admin</option></select></label>
+      <label class="ucf ucf-toggle"><span class="ucf-l">Active</span><span class="un-cb"><input type="checkbox" ${(d.active!==false)?'checked':''} onchange="userDraftSet('active',this.checked,true)"> Can log in</span></label>
+    </div>
+    <div class="user-edit-sec">
+      <div class="user-edit-sec-h">Notification methods</div>
+      <div class="user-notify">
+        <label class="un-cb"><input type="checkbox" ${n.sms?'checked':''} onchange="userDraftSetNotify('sms',this.checked)"> SMS</label>
+        <label class="un-cb"><input type="checkbox" ${n.email?'checked':''} onchange="userDraftSetNotify('email',this.checked)"> Email</label>
+        <label class="un-cb"><input type="checkbox" ${n.ai?'checked':''} onchange="userDraftSetNotify('ai',this.checked)"> AI</label>
+      </div>
+    </div>
+    ${tagChips}
+    <div class="user-edit-foot">
+      <button class="btn" onclick="userCollapse()">Cancel</button>
+      <button class="btn primary" onclick="userSaveEdit('${u.id}')">Save</button>
+    </div>
+  </div>`;
+}
 function renderUsersList(){
   const mount=document.getElementById('users-list');
   // Entry point to the Roles & Permissions manager.
@@ -18391,43 +18511,36 @@ function renderUsersList(){
       <button class="btn" onclick="var el=document.getElementById('new-discipline');addClinicalRole(el.value);el.value='';">+ Add</button>
     </div>
   </div>`;
+  // Drop a stale expand target (e.g. the expanded user was just deleted).
+  if(USERS_EXPAND.id && !USERS.some(u=>u.id===USERS_EXPAND.id)){ USERS_EXPAND={id:null,mode:null}; USER_DRAFT=null; }
+  const _eye='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const _pencil='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  const _trash='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
   USERS.forEach(u=>{
     const isSelf=u.id===CURRENT_USER_ID;
-    const tags=Array.isArray(u.tags)?u.tags:[];
-    const n=(u.notify&&typeof u.notify==='object')?u.notify:{};
-    const tagChips = CLINICAL_ROLES.length
-      ? `<div class="user-tags">${CLINICAL_ROLES.map(r=>{const on=tags.indexOf(r)>=0;return `<button class="utag${on?' on':''}" onclick="toggleUserTag('${u.id}',${JSON.stringify(r).replace(/"/g,'&quot;')},${on?'false':'true'})">${esc(r)}</button>`;}).join('')}</div>`
-      : '';
-    // Build role <select> separately so it doesn't break on quotes in names.
-    // Disabling the role editor for the current user prevents you from
-    // accidentally demoting yourself out of the admin role you're using.
-    html+=`<div class="user-row">
-      <div class="user-avatar lg">${esc(initialsFor(u.name))}</div>
-      <div class="user-row-info">
-        <div class="user-row-name">
-          ${esc(u.name)}
-          <span class="role-badge ${u.role}">${u.role}</span>
-          ${isSelf?'<span class="self-tag">YOU</span>':''}
+    const open=USERS_EXPAND.id===u.id;
+    const mode=open?USERS_EXPAND.mode:null;
+    const active=(u.active!==false);
+    html+=`<div class="user-item${open?' open':''}">
+      <div class="user-row">
+        <div class="user-avatar lg">${esc(initialsFor(u.name))}</div>
+        <div class="user-row-info">
+          <div class="user-row-name">
+            <span class="user-status-dot${active?'':' off'}" title="${active?'Active':'Inactive'}"></span>
+            ${esc(u.name)}
+            <span class="role-badge ${u.role}">${esc(u.role)}</span>
+            ${isSelf?'<span class="self-tag">YOU</span>':''}
+            ${active?'':'<span class="user-inactive">Inactive</span>'}
+          </div>
+          <div class="user-row-email">${esc(u.email||'—')}</div>
         </div>
-        ${userDetailGrid(u)}
-        <div class="user-notify">
-          <span class="un-l">Notification methods</span>
-          <label class="un-cb"><input type="checkbox" ${n.sms?'checked':''} onchange="toggleUserNotify('${u.id}','sms',this.checked)"> SMS</label>
-          <label class="un-cb"><input type="checkbox" ${n.email?'checked':''} onchange="toggleUserNotify('${u.id}','email',this.checked)"> Email</label>
-          <label class="un-cb"><input type="checkbox" ${n.ai?'checked':''} onchange="toggleUserNotify('${u.id}','ai',this.checked)"> AI</label>
+        <div class="user-row-actions">
+          <button class="uact view${open&&mode==='view'?' on':''}" title="View details" onclick="userExpandView('${u.id}')">${_eye}</button>
+          <button class="uact edit${open&&mode==='edit'?' on':''}" title="Edit user" onclick="userExpandEdit('${u.id}')">${_pencil}</button>
+          <button class="uact del" title="Delete user" onclick="deleteUser('${u.id}')" ${isSelf?'disabled':''}>${_trash}</button>
         </div>
-        ${tagChips}
       </div>
-      <div class="user-row-actions">
-        <select class="enhance-dd" onchange="changeUserRole('${u.id}',this.value)" ${isSelf?'disabled title="Cannot change your own role"':''}>
-          <option value="viewer"${u.role==='viewer'?' selected':''}>Viewer</option>
-          <option value="editor"${u.role==='editor'?' selected':''}>Editor</option>
-          <option value="admin"${u.role==='admin'?' selected':''}>Admin</option>
-        </select>
-        <button class="del" title="Delete user" onclick="deleteUser('${u.id}')" ${isSelf?'disabled':''}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        </button>
-      </div>
+      ${open?(mode==='edit'?userEditPanel(u):userViewPanel(u)):''}
     </div>`;
   });
   mount.innerHTML=html;
