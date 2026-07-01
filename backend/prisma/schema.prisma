@@ -38,11 +38,11 @@ model Organization {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
+  id             String    @id @default(cuid())
+  email          String    @unique
   name           String
   passwordHash   String
-  role           Role     @default(EDITOR)
+  role           Role      @default(EDITOR)
   organizationId String
   // Profile fields edited in the builder's "Manage Users" panel. All optional so
   // existing rows are unaffected; the display `name` stays the source of truth.
@@ -58,28 +58,28 @@ model User {
   costCenter     String?
   timeZone       String?
   language       String?
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  ownedForms     Form[]       @relation("owner")
-  sharedForms    FormShare[]
-  refreshTokens  RefreshToken[]
-  auditLogs      AuditLog[]
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  ownedForms    Form[]         @relation("owner")
+  sharedForms   FormShare[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
 
   @@index([organizationId])
   @@index([email])
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
   userId    String
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -87,23 +87,23 @@ model RefreshToken {
 }
 
 model Form {
-  id             String    @id @default(cuid())
-  title          String
-  description    String?
-  schemaEnc      Bytes
-  schemaIv       String
-  schemaTag      String
-  ownerId        String
-  organizationId String
-  groupId        String?
-  scoringSections Json     @default("[]")
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  id              String    @id @default(cuid())
+  title           String
+  description     String?
+  schemaEnc       Bytes
+  schemaIv        String
+  schemaTag       String
+  ownerId         String
+  organizationId  String
+  groupId         String?
+  scoringSections Json      @default("[]")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
-  owner        User         @relation("owner", fields: [ownerId], references: [id])
-  organization Organization @relation(fields: [organizationId], references: [id])
-  group        Group?       @relation(fields: [groupId], references: [id])
+  owner        User            @relation("owner", fields: [ownerId], references: [id])
+  organization Organization    @relation(fields: [organizationId], references: [id])
+  group        Group?          @relation(fields: [groupId], references: [id])
   shares       FormShare[]
   roleShares   FormRoleShare[]
   shareLinks   ShareLink[]
@@ -176,7 +176,7 @@ model Block {
 // and soft-deleted, mirroring User. `notify` is the delivery channel:
 // "email" | "sms" | "both". dob is kept as a plain ISO date string (no TZ math).
 model Contact {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String
   name           String
   firstName      String?
@@ -191,9 +191,9 @@ model Contact {
   mrn            String?
   timeZone       String?
   language       String?
-  notify         String   @default("email")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  notify         String    @default("email")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id])
@@ -263,4 +263,22 @@ model Submission {
 
   @@index([formId])
   @@index([shareLinkId])
+}
+
+// Delivery audit for submission notifications (one row per recipient/channel).
+// No FK to Submission — submissionId is a soft reference so a purged submission
+// never cascades away its delivery history.
+model NotificationLog {
+  id             String   @id @default(cuid())
+  submissionId   String?
+  formId         String
+  organizationId String
+  channel        String // 'email' | 'sms'
+  recipient      String // destination address (email) — never PHI
+  status         String // 'sent' | 'failed' | 'skipped'
+  error          String?
+  createdAt      DateTime @default(now())
+
+  @@index([formId])
+  @@index([submissionId])
 }

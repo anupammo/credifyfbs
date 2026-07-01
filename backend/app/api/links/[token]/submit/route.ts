@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { encryptSchema } from "@/lib/crypto/aes";
 import { dataLimiter } from "@/lib/rateLimit";
+import { notifyOnSubmission } from "@/lib/notify/onSubmission";
 
 type Ctx = { params: Promise<{ token: string }> };
 
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const { token } = await ctx.params;
   const link = await prisma.shareLink.findUnique({
     where: { token },
-    include: { form: { select: { id: true, deletedAt: true } } },
+    include: { form: { select: { id: true, title: true, ownerId: true, deletedAt: true } } },
   });
 
   if (!link || link.form.deletedAt) {
@@ -42,8 +43,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   const { enc, iv, tag } = encryptSchema(JSON.stringify(parsed.data.answers));
 
-  await prisma.$transaction(async (tx) => {
-    await tx.submission.create({
+  const submission = await prisma.$transaction(async (tx) => {
+    const created = await tx.submission.create({
       data: {
         formId: link.formId,
         shareLinkId: link.id,
@@ -56,7 +57,15 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     if (link.kind === "single") {
       await tx.shareLink.update({ where: { id: link.id }, data: { usedAt: new Date() } });
     }
+    return created;
   });
+
+  // Fire-and-forget: notify the team on submission. Never awaited, never allowed
+  // to throw into the response — a mail issue must not fail a patient's submit.
+  notifyOnSubmission(
+    { id: link.formId, title: link.form.title, ownerId: link.form.ownerId, organizationId: link.organizationId },
+    submission.id
+  ).catch(() => {});
 
   return NextResponse.json({ success: true });
 }
