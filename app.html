@@ -2280,6 +2280,10 @@ button{font-family:'Sora',sans-serif;cursor:pointer}
 .left-tab{flex:1;padding:12px;border:none;background:none;font-family:'Sora',sans-serif;font-size:13px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent}
 .left-tab.active{color:var(--green-primary);border-bottom-color:var(--green-primary)}
 .left-scroll{flex:1;overflow-y:auto;padding:14px 13px}
+/* Inactive tab pane. Class-based (not inline display) so the collapsed rule
+   above — `.leftpanel.collapsed .left-scroll{display:none}` — always wins and
+   the pane can't leak into the 42px rail when the panel is unpinned. */
+.left-scroll.lp-hidden{display:none}
 .pal-group-h{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);margin:14px 4px 9px;font-family:'Sora',sans-serif}
 .pal-group-h:first-child{margin-top:0}
 .pal-item{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--white);margin-bottom:7px;cursor:grab;font-size:13px;color:var(--text-main);transition:all .12s ease;user-select:none}
@@ -4253,7 +4257,7 @@ body.block-selecting .field.block-sel{border-color:var(--green-primary);box-shad
         </button>
       </div>
       <div class="left-scroll" id="left-fields"></div>
-      <div class="left-scroll" id="left-blocks" style="display:none"></div>
+      <div class="left-scroll lp-hidden" id="left-blocks"></div>
       <button class="panel-rail" id="left-rail" type="button" title="Pin panel — expand Fields & Blocks" aria-label="Expand Fields & Blocks panel" onclick="togglePanel('left')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         <span class="panel-rail-label">Fields &amp; Blocks</span>
@@ -13096,8 +13100,8 @@ function updateBlockSelectBar(){
 
 function setLeftTab(tab){
   document.querySelectorAll('.left-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  document.getElementById('left-fields').style.display=(tab==='fields')?'block':'none';
-  document.getElementById('left-blocks').style.display=(tab==='blocks')?'block':'none';
+  document.getElementById('left-fields').classList.toggle('lp-hidden', tab!=='fields');
+  document.getElementById('left-blocks').classList.toggle('lp-hidden', tab!=='blocks');
 }
 
 /* ── Side-panel pin / unpin ────────────────────────────────────────────────
