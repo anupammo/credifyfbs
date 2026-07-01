@@ -13120,6 +13120,19 @@ function applyPanelPins(){
   if(lp) lp.classList.toggle('collapsed',!PANELS.left);
   if(insp) insp.classList.toggle('collapsed',!PANELS.inspector);
 }
+// The inspector is UNPINNED (collapsed) by default and stays that way until a
+// field is selected — selecting one pins it open to show settings; clearing the
+// selection unpins it again. Manual pin/unpin (the rail/pin buttons) is honoured
+// until the next selection change. Driven off `SELECTED`; call on every render.
+let _inspHadSel=null;
+function syncInspectorPin(){
+  const hasSel=!!SELECTED;
+  if(hasSel===_inspHadSel) return;   // only act on a selection transition
+  _inspHadSel=hasSel;
+  PANELS.inspector=hasSel;
+  savePanelPrefs();
+  applyPanelPins();
+}
 function togglePanel(which){
   if(which!=='left'&&which!=='inspector') return;
   PANELS[which]=!PANELS[which];
@@ -14260,9 +14273,10 @@ function render(){
   pruneConditions();
   // Reflect the form-level display rule indicator in the header.
   renderFormRuleBar();
-  renderCanvas(); 
+  renderCanvas();
   if(typeof updateNumberFieldsButton==='function') updateNumberFieldsButton();
-  renderInspector(); 
+  renderInspector();
+  syncInspectorPin();   // unpin the inspector when nothing is selected, pin it when a field is
   renderPreviewIfNeeded(); 
   saveForm(); 
   applyRoleUI();
@@ -23388,7 +23402,7 @@ async function _credifyInit(){
   goToLogin();
 }
 // Restore the user's last side-panel pin layout before the app paints.
-try{ loadPanelPrefs(); applyPanelPins(); }catch(e){}
+try{ loadPanelPrefs(); applyPanelPins(); syncInspectorPin(); }catch(e){}
 // Safety net: never leave the gate stuck on a white screen if something hangs.
 setTimeout(function(){ try{ if(API_MODE) hideSsoGate(); }catch(e){} }, 9000);
 _credifyInit();
